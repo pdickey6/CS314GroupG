@@ -3,7 +3,9 @@
 // license found at www.lloseng.com 
 
 import java.io.*;
+
 import com.lloseng.ocsf.server.*;
+import common.ChatIF;
 
 /**
  * This class overrides some of the methods in the abstract 
@@ -24,19 +26,25 @@ public class EchoServer extends AbstractServer
    */
   final public static int DEFAULT_PORT = 5555;
   
-  //Constructors ****************************************************
-  
+  //Instance variables *************************************************
   /**
-   * Constructs an instance of the echo server.
-   *
-   * @param port The port number to connect on.
+   * The interface type variable.  It allows the implementation of the display method in the client.
    */
-  public EchoServer(int port) 
+  ChatIF serverUI;
+  
+  //Constructor ****************************************************
+   
+  public EchoServer(int port, ChatIF serverConsole) 
   {
     super(port);
+    serverUI = serverConsole;
+    try {
+		this.listen();
+	} catch (IOException e) {
+		serverUI.display("Unable to start listening!");
+	} 
   }
-
-  
+    
   //Instance methods ************************************************
   
   /**
@@ -48,7 +56,7 @@ public class EchoServer extends AbstractServer
   public void handleMessageFromClient
     (Object msg, ConnectionToClient client)
   {
-    System.out.println("Message received: " + msg + " from " + client);
+    serverUI.display("Message received: " + msg + " from " + client);
     this.sendToAllClients(msg);
   }
     
@@ -58,8 +66,7 @@ public class EchoServer extends AbstractServer
    */
   protected void serverStarted()
   {
-    System.out.println
-      ("Server listening for connections on port " + getPort());
+	  serverUI.display("Server listening for connections on port " + getPort());
   }
   
   /**
@@ -68,8 +75,8 @@ public class EchoServer extends AbstractServer
    */
   protected void serverStopped()
   {
-    System.out.println
-      ("Server has stopped listening for connections.");
+	  serverUI.display("Server has stopped listening for connections.");
+	  sendToAllClients("WARNING - The server has stopped listening for connections");
   }
   
   /**
@@ -77,49 +84,105 @@ public class EchoServer extends AbstractServer
    * when a client connects.
    */
   protected void clientConnected(ConnectionToClient client){
-	  this.sendToAllClients("A new client has connected!");
+	  String msg ="A new client has connected!";
+	  serverUI.display(msg);
+	  sendToAllClients(msg);
   }
   
-  /**
+    /**
    * This method overrides the one in the superclass.  Called
    * when a client disconnects.
    */
   protected void clientDisconnected(ConnectionToClient client){
-	  this.sendToAllClients("A client has disconnected!");
+	  String msg ="A client has disconnected!";
+	  serverUI.display(msg);
+	  sendToAllClients(msg);
   }
   
   //Class methods ***************************************************
   
-  /**
-   * This method is responsible for the creation of 
-   * the server instance (there is no UI in this phase).
-   *
-   * @param args[0] The port number to listen on.  Defaults to 5555 
-   *          if no argument is entered.
-   */
-  public static void main(String[] args) 
-  {
-    int port = 0; //Port to listen on
-
-    try
-    {
-      port = Integer.parseInt(args[0]); //Get port from command line
-    }
-    catch(Throwable t)
-    {
-      port = DEFAULT_PORT; //Set port to 5555
-    }
+  public void handleMessageFromServerUI(String message) {
+	  if(!message.startsWith("#")) {//Server Msg
+		    serverUI.display(message);
+		    sendToAllClients("SERVER MSG> " + message);
+	  } else {
+		  	int cmdEnd = message.indexOf(' ');
+			if (cmdEnd < 1) 
+				cmdEnd = message.length();
+			String cmd = message.substring(1, cmdEnd);
 	
-    EchoServer sv = new EchoServer(port);
-    
-    try 
-    {
-      sv.listen(); //Start listening for connections
-    } 
-    catch (Exception ex) 
-    {
-      System.out.println("ERROR - Could not listen for clients!");
-    }
+			//Switch based on user command
+			switch (cmd) {
+				case "quit" :
+					if(!isClosed()){
+						try {
+							close();
+						} catch (IOException e) {
+							serverUI.display("Unable to close.");
+						}
+					}
+					System.exit(0);
+					
+					break;
+				case "stop" :
+					if(!isListening())
+						serverUI.display("Server is already stopped.");
+					else {
+						stopListening();
+					}
+					break;
+				case "close" :
+					if(isClosed())
+						serverUI.display("Server is already closed");
+					else {
+						try{
+							sendToAllClients("SERVER SHUTTING DOWN! DISCONNECTING");
+							sendToAllClients("Abnormal termination of connection");
+							close();
+						} catch (IOException e){
+							serverUI.display("Unable to close.");
+						}
+					}
+					break;
+				case "setport" :
+					if(!isClosed())
+						serverUI.display("Can not set port untill the server is closed.");
+					else {
+						String temp = message.substring(cmdEnd +1, message.length());
+						setPort( Integer.parseInt(message.substring(cmdEnd +1, message.length())));
+					}
+					break;
+				case "start" :
+					if(isListening())
+						serverUI.display("Server is already listening.");
+					else {
+						try {
+							listen();
+						} catch (IOException e) {
+							serverUI.display("Unable to start listening.");
+						}
+					}
+					break;
+				case "getport" :
+					serverUI.display("Current Port: " + getPort());				
+					break;					
+				default: 
+					serverUI.display("Command not recognized.");
+			}		
+	  }
+	}
+	public static void main(String[] args) 
+	{
+		//Get port
+		int port = 0;
+		try {
+			port = Integer.parseInt(args[1]); 
+		} catch(Throwable t) {
+			port = DEFAULT_PORT; //Set port to 5555
+		}
+		
+		ServerConsole server = new ServerConsole(port);
+		server.accept();  //Wait for console data
+	}
   }
-}
 //End of EchoServer class

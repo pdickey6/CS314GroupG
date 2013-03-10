@@ -20,14 +20,13 @@ import java.io.*;
 public class ChatClient extends AbstractClient
 {
   //Instance variables **********************************************
-  
+	
   /**
    * The interface type variable.  It allows the implementation of 
    * the display method in the client.
    */
   ChatIF clientUI; 
   private Boolean connected;
-
   
   //Constructors ****************************************************
   
@@ -67,8 +66,15 @@ public class ChatClient extends AbstractClient
    */
   public void handleMessageFromClientUI(String message)
   {
-	if(message.startsWith("#"))//command not message
+	if(!message.startsWith("#"))//message
 	{
+		try {
+		    sendToServer(message);
+		} catch(IOException e) {
+		    clientUI.display("Could not send message to server. Terminating client.");
+		    quit();
+		}
+	} else { //command
 		int cmdEnd = message.indexOf(' ');
 		if (cmdEnd < 1) 
 			cmdEnd = message.length();
@@ -77,15 +83,18 @@ public class ChatClient extends AbstractClient
 		//Switch based on user command
 		switch (cmd) {
 			case "quit" :
+				//shouldQuit = true;
 				quit();
 				break;
 			case "logoff" :
 				if(!connected)
 					clientUI.display("You are already logged off.");
 				else {
+					//shouldQuit = false;
 					try {
 						closeConnection();
 						connected = false;
+						clientUI.display("Logoff Successful");
 					} catch (IOException e) {
 						clientUI.display("Unable to logoff.");
 					}
@@ -95,16 +104,18 @@ public class ChatClient extends AbstractClient
 				if(connected)
 					clientUI.display("Cannot set host while connected to server.");
 				else {
-					String temp = message.substring(cmdEnd +1, message.length());
-					setHost( message.substring(cmdEnd +1, message.length()));
+					String host = message.substring(cmdEnd +1, message.length());
+					setHost(host);
+					clientUI.display("Host set to: " + host);
 				}
 				break;
 			case "setport" :
 				if(connected)
 					clientUI.display("Cannot set port while connected to server.");
 				else {
-					String temp = message.substring(cmdEnd +1, message.length());
-					setPort( Integer.parseInt(message.substring(cmdEnd +1, message.length())));
+					int newPort = Integer.parseInt(message.substring(cmdEnd +1, message.length()));
+					setPort(newPort);
+					clientUI.display("Port set to: " + newPort);
 				}
 				break;
 			case "login" :
@@ -114,6 +125,7 @@ public class ChatClient extends AbstractClient
 					try {
 						openConnection();
 						connected = true;
+						clientUI.display("Login Successful");
 					} catch (IOException e) {
 						clientUI.display("Unable to login.");
 					}
@@ -128,31 +140,30 @@ public class ChatClient extends AbstractClient
 				
 			default: 
 				clientUI.display("Command not recognized.");
-		}		
-	} else {
-		try {
-		    sendToServer(message);
-		} catch(IOException e) {
-		    clientUI.display("Could not send message to server.  Terminating client.");
-		    quit();
+				}
 		}
 	}
-  }
+
   
 
   /**
    * Called when the connection to the server is closed.
    */
   protected void connectionException(){
-	  clientUI.display("Connection to server has been closed.");
+	  connected = false;
+	  clientUI.display("Abnormal termination of connection");
   }
   
   /**
    * Called when the connection to the server is closed.
    */
   protected void connectionClosed(){
+	try {
+		closeConnection();
+	} catch (IOException e) {
+
+	}
 	  connected = false;
-	  clientUI.display("Connection to server has been closed.");
   }
   
   protected void connectionEstablished(){
@@ -164,12 +175,15 @@ public class ChatClient extends AbstractClient
    */
   public void quit()
   {
-    try
-    {
-      closeConnection();
-    }
-    catch(IOException e) {}
-    System.exit(0);
+	  if(connected){
+		  try
+		    {
+		      closeConnection();
+		      connected = false;
+		    }
+		    catch(IOException e) {}
+	  }
+	  System.exit(0);
   }
 }
 //End of ChatClient class

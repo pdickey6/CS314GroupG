@@ -93,8 +93,7 @@ public class ClientConsole implements ChatIF
   {
     System.out.println("> " + message);
   }
-
-  
+    
   //Class methods ***************************************************
   
   /**
@@ -123,5 +122,6 @@ public class ClientConsole implements ChatIF
     ClientConsole chat= new ClientConsole(host, port);
     chat.accept();  //Wait for console data
   }
+
 }
 //End of ConsoleChat class
