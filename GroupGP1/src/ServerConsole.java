@@ -48,5 +48,19 @@ public class ServerConsole implements ChatIF{
 			System.out.println
 			("Unexpected error while reading from console!");
 		}
-	}	
+	}
+	
+	public static void main(String[] args) 
+	{
+		//Get port
+		int port = 0;
+		try {
+			port = Integer.parseInt(args[0]); 
+		} catch(Throwable t) {
+			port = DEFAULT_PORT; //Set port to 5555
+		}
+		
+		ServerConsole server = new ServerConsole(port);
+		server.accept();  //Wait for console data
+	}
 }

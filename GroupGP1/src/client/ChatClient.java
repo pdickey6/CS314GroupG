@@ -7,6 +7,7 @@ package client;
 import com.lloseng.ocsf.client.*;
 import common.*;
 import java.io.*;
+import java.util.ArrayList;
 
 /**
  * This class overrides some of the methods defined in the abstract
@@ -25,8 +26,11 @@ public class ChatClient extends AbstractClient
    * The interface type variable.  It allows the implementation of 
    * the display method in the client.
    */
-  ChatIF clientUI; 
+  private ChatIF clientUI;
+  private String loginId;
   private Boolean connected;
+  public ArrayList<String> Blocked;
+  public ArrayList<String> BlockedMe;
   
   //Constructors ****************************************************
   
@@ -38,14 +42,28 @@ public class ChatClient extends AbstractClient
    * @param clientUI The interface type variable.
    */
   
-  public ChatClient(String host, int port, ChatIF clientUI) 
-    throws IOException 
+  public ChatClient(ChatIF UI){
+	  super("localhost",5555);
+	  clientUI = UI;
+	  connected = false;
+  }
+  
+  public ChatClient(String id, String host, int port, ChatIF UI) 
+  throws IOException 
   {
     super(host, port); //Call the superclass constructor
-    this.clientUI = clientUI;
+    clientUI = UI;
+    loginId = id;
+    Blocked = new ArrayList<String>();
+    BlockedMe = new ArrayList<String>();    
     openConnection();
+    try {
+		sendToServer("#login " + loginId);
+	} catch (IOException e) {
+		clientUI.display("ERROR - No login ID specified. Connection aborted.");
+	}
   }
-
+  
   
   //Instance methods ************************************************
     
@@ -56,7 +74,21 @@ public class ChatClient extends AbstractClient
    */
   public void handleMessageFromServer(Object msg) 
   {
-    clientUI.display(msg.toString());
+	  int endIdIndex = msg.toString().indexOf('>');
+	  if(endIdIndex > 0){
+		  String id = msg.toString().substring(0, endIdIndex);
+		  if(!Blocked.contains(id))
+			  //sender is not blocked, display msg
+			  clientUI.display(msg.toString());
+	  } else if(msg.toString().contains("will be blocked.")){
+		  int endIndex = msg.toString().indexOf('w');
+		  String id = msg.toString().substring(14, endIndex-1);
+		  Blocked.add(id);
+		  clientUI.display(msg.toString());
+	  }
+	  else {
+		  clientUI.display(msg.toString());
+	  }
   }
 
   /**
@@ -83,18 +115,16 @@ public class ChatClient extends AbstractClient
 		//Switch based on user command
 		switch (cmd) {
 			case "quit" :
-				//shouldQuit = true;
 				quit();
 				break;
 			case "logoff" :
 				if(!connected)
 					clientUI.display("You are already logged off.");
 				else {
-					//shouldQuit = false;
 					try {
 						closeConnection();
 						connected = false;
-						clientUI.display("Logoff Successful");
+						clientUI.display("Connection closed.");
 					} catch (IOException e) {
 						clientUI.display("Unable to logoff.");
 					}
@@ -105,30 +135,25 @@ public class ChatClient extends AbstractClient
 					clientUI.display("Cannot set host while connected to server.");
 				else {
 					String host = message.substring(cmdEnd +1, message.length());
-					setHost(host);
-					clientUI.display("Host set to: " + host);
+					if(host.length() > 0 ) {
+						setHost(host);
+						clientUI.display("Host set to: " + host);
+					} else {
+						clientUI.display("Host could not be set");
+					}
 				}
 				break;
 			case "setport" :
 				if(connected)
 					clientUI.display("Cannot set port while connected to server.");
 				else {
-					int newPort = Integer.parseInt(message.substring(cmdEnd +1, message.length()));
-					setPort(newPort);
-					clientUI.display("Port set to: " + newPort);
-				}
-				break;
-			case "login" :
-				if(connected)
-					clientUI.display("You are already logged in.");
-				else {
-					try {
-						openConnection();
-						connected = true;
-						clientUI.display("Login Successful");
-					} catch (IOException e) {
-						clientUI.display("Unable to login.");
-					}
+					try{
+						int port = Integer.parseInt(message.substring(cmdEnd +1, message.length()));
+						setPort(port);
+						clientUI.display("Port set to: " + port);
+					}catch (NumberFormatException e){
+						clientUI.display("Port could not be set");
+					}					
 				}
 				break;
 			case "gethost" :
@@ -137,14 +162,51 @@ public class ChatClient extends AbstractClient
 			case "getport" :
 				clientUI.display("Current Port: " + getPort());				
 				break;
-				
+			case "block" :
+				try{
+					String blockee = message.substring(cmdEnd+1, message.length());
+					if(Blocked != null && Blocked.size() > 0 && Blocked.contains(blockee)){
+						clientUI.display("Messages from " + blockee + " were already blocked.");
+					} else{
+						sendToServer(message);
+					}
+				} catch (IOException e) {
+					clientUI.display("Messages could not be blocked.");
+				}
+				break;
+			case "unblock" :
+				try {
+					sendToServer(message);
+				} catch (IOException e) {
+					clientUI.display("Messages could not be unblocked.");
+				}
+				break;
+			case "whoiblock" :
+				if(Blocked != null){
+					String blocks = "Blocked Users: ";
+					for(int i = 0; i < Blocked.size(); i ++){
+						blocks += Blocked.get(i) + " ";
+					}
+					clientUI.display(blocks);
+				}
+				else{
+					clientUI.display("No users currently blocked.");
+				}
+				break;
+			case "whoblocksme" :
+				try {
+					sendToServer(message);
+				} catch (IOException e) {
+					clientUI.display("Block list could not be retrived.");
+				}
+				break;
+			
 			default: 
 				clientUI.display("Command not recognized.");
 				}
 		}
 	}
 
-  
 
   /**
    * Called when the connection to the server is closed.
@@ -166,8 +228,8 @@ public class ChatClient extends AbstractClient
 	  connected = false;
   }
   
-  protected void connectionEstablished(){
-	  connected = true;
+  protected void connectionEstablished(){	  
+	  connected = true;	  
   }
   
   /**
