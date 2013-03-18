@@ -1,6 +1,7 @@
 // This file contains material supporting section 3.7 of the textbook:
 // "Object Oriented Software Engineering" and is issued under the open-source
 // license found at www.lloseng.com 
+//Edited by Patrick Dickey and Sean Jergensen
 
 package client;
 
@@ -29,8 +30,6 @@ public class ChatClient extends AbstractClient
   private ChatIF clientUI;
   private String loginId;
   private Boolean connected;
-  public ArrayList<String> Blocked;
-  public ArrayList<String> BlockedMe;
   
   //Constructors ****************************************************
   
@@ -54,8 +53,7 @@ public class ChatClient extends AbstractClient
     super(host, port); //Call the superclass constructor
     clientUI = UI;
     loginId = id;
-    Blocked = new ArrayList<String>();
-    BlockedMe = new ArrayList<String>();    
+  
     openConnection();
     try {
 		sendToServer("#login " + loginId);
@@ -74,21 +72,7 @@ public class ChatClient extends AbstractClient
    */
   public void handleMessageFromServer(Object msg) 
   {
-	  int endIdIndex = msg.toString().indexOf('>');
-	  if(endIdIndex > 0){
-		  String id = msg.toString().substring(0, endIdIndex);
-		  if(!Blocked.contains(id))
-			  //sender is not blocked, display msg
-			  clientUI.display(msg.toString());
-	  } else if(msg.toString().contains("will be blocked.")){
-		  int endIndex = msg.toString().indexOf('w');
-		  String id = msg.toString().substring(14, endIndex-1);
-		  Blocked.add(id);
-		  clientUI.display(msg.toString());
-	  }
-	  else {
-		  clientUI.display(msg.toString());
-	  }
+	  clientUI.display(msg.toString());
   }
 
   /**
@@ -130,6 +114,19 @@ public class ChatClient extends AbstractClient
 					}
 				}
 				break;
+			case "login" :
+				if(connected)
+					clientUI.display("You are already logged in.");
+				else {
+					try {
+						openConnection();
+						sendToServer("#login " + loginId);
+						connected = true;
+					} catch (IOException e) {
+						clientUI.display("Unable to login.");
+					}
+				}
+				break;
 			case "sethost" :
 				if(connected)
 					clientUI.display("Cannot set host while connected to server.");
@@ -164,12 +161,8 @@ public class ChatClient extends AbstractClient
 				break;
 			case "block" :
 				try{
-					String blockee = message.substring(cmdEnd+1, message.length());
-					if(Blocked != null && Blocked.size() > 0 && Blocked.contains(blockee)){
-						clientUI.display("Messages from " + blockee + " were already blocked.");
-					} else{
-						sendToServer(message);
-					}
+					sendToServer(message);
+
 				} catch (IOException e) {
 					clientUI.display("Messages could not be blocked.");
 				}
@@ -182,15 +175,10 @@ public class ChatClient extends AbstractClient
 				}
 				break;
 			case "whoiblock" :
-				if(Blocked != null){
-					String blocks = "Blocked Users: ";
-					for(int i = 0; i < Blocked.size(); i ++){
-						blocks += Blocked.get(i) + " ";
-					}
-					clientUI.display(blocks);
-				}
-				else{
-					clientUI.display("No users currently blocked.");
+				try{
+					sendToServer(message);
+				} catch (IOException e){
+					clientUI.display("Could not get list of blocked users.");
 				}
 				break;
 			case "whoblocksme" :
@@ -240,7 +228,7 @@ public class ChatClient extends AbstractClient
 	  if(connected){
 		  try
 		    {
-		      closeConnection();
+		      closeConnection(); 
 		      connected = false;
 		    }
 		    catch(IOException e) {}
