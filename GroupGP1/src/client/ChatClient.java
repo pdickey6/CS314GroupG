@@ -30,6 +30,7 @@ public class ChatClient extends AbstractClient
   private ChatIF clientUI;
   private String loginId;
   private Boolean connected;
+  private String channel;
   
   //Constructors ****************************************************
   
@@ -45,6 +46,7 @@ public class ChatClient extends AbstractClient
 	  super("localhost",5555);
 	  clientUI = UI;
 	  connected = false;
+	  channel = "public";
   }
   
   public ChatClient(String id, String host, int port, ChatIF UI) 
@@ -53,6 +55,7 @@ public class ChatClient extends AbstractClient
     super(host, port); //Call the superclass constructor
     clientUI = UI;
     loginId = id;
+    channel = "public";
   
     openConnection();
     try {
@@ -188,13 +191,17 @@ public class ChatClient extends AbstractClient
 					clientUI.display("Block list could not be retrived.");
 				}
 				break;
-			
+			case "setchannel":
+				try {sendToServer(message);
+				} catch (IOException e) {
+					clientUI.display("Block list could not be retrived.");
+				}
+				break;
 			default: 
 				clientUI.display("Command not recognized.");
 				}
 		}
 	}
-
 
   /**
    * Called when the connection to the server is closed.

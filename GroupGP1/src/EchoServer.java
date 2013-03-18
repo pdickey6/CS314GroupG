@@ -69,90 +69,28 @@ public class EchoServer extends AbstractServer
 		else{
 			serverUI.display("Message received: " + message + " from " + client.getInfo("loginId"));
 		}
-		if(!message.startsWith("#")){ //message	
-			SendToUnblockedClients(client.getInfo("loginId") + "> " + msg, client);
-		} else { //command
-			int cmdEnd = message.indexOf(' ');
-			if (cmdEnd < 1) 
-				cmdEnd = message.length();
-			String cmd = message.substring(1, cmdEnd);			
+
+		if(!message.startsWith("#")){ 
+			//message
+			SelectiveSendToClients(client.getInfo("loginId") + "> " + msg, client);
+		} else { 
+			//command
+			String cmd = getCommand(message);
 
 			if(cmd.equals("login")){
-				String id = message.substring(cmdEnd+1, message.length());
-				client.setInfo("loginId", id);
-				users.add(id);
-				sendToAllClients(id + " has logged on.");
-				serverUI.display(id + " has logged on.");				
+				String id = message.substring(message.indexOf(' ')+1, message.length());
+				boolean validLogin = loginRecived(client, id);						
 			} else if (cmd.equals("block")){
-				String blockee = message.substring(cmdEnd+1, message.length());
+				String blockee = message.substring(message.indexOf(' ')+1, message.length());
 				NewBlock(client,blockee);
-			} else if (cmd.equals("unblock")){ 				
-				if (message.trim().equals("#"+cmd)) { //#unblock all command
-					if (getBlocks(client).isEmpty()) {
-						try {
-							client.sendToClient("No blocking is in effect.");
-						} catch (IOException e) {
-							serverUI.display("Message could not be sent to the client.");
-						}
-					}else { //
-						ArrayList<String> blocks = getBlocks(client);
-						for (int i = 0; i < blocks.size(); i++) {
-							try {
-								client.sendToClient("Messages from " + blocks.get(i) + " will now be displayed.");
-								if( blocks.get(i).equals("server"))
-									serverMuteUsers.remove(client.getInfo("loginId"));
-							} catch (IOException e) {
-								serverUI.display("Message could not be sent to the client.");
-							}
-						}
-						client.setInfo("Blocked", new ArrayList<String>());
-					}
-				}else { //#unblock user command
-					serverMuteUsers.remove(client.getInfo("loginId"));
-					String unBlockee = message.substring(cmdEnd+1, message.length());
-					if(Unblock(client,unBlockee)){
-						try {
-							client.sendToClient("Messages from " + unBlockee + " will now be displayed.");
-							if( unBlockee.equals("server"))
-								serverMuteUsers.remove("server");
-						} catch (IOException e) {
-							serverUI.display("Message could not be sent to the client.");
-						}
-					}else {
-						try {
-							client.sendToClient("Messages from " + unBlockee + " were not blocked");
-						} catch (IOException e) {
-							serverUI.display("Message could not be sent to the client.");
-						}
-					}
-				}
+			} else if (cmd.equals("unblock")){
+				UnblockCmd(client, message);
 			} else if (cmd.equals("whoiblock")){
-				ArrayList<String> iBlocked = getBlocks(client);
-				if (iBlocked.isEmpty()) {
-					try {
-						client.sendToClient("No blocking is in effect.");
-					} catch (IOException e) {
-						serverUI.display("Message could not be sent to the client.");
-					}
-				}else {
-					for (int i = 0; i < iBlocked.size(); i++) {
-						try {
-							client.sendToClient("Messages from " + iBlocked.get(i) + " are blocked.");
-						} catch (IOException e) {
-							serverUI.display("Message could not be sent to the client.");
-						}
-					}
-				}
-
+				WhoIBlockCmd(client);
 			} else if (cmd.equals("whoblocksme")){
-				ArrayList<Thread> blockedMe = getBlockedMe(client);
-				for (int i = 0; i < blockedMe.size(); i++) {
-					try {
-						client.sendToClient("Messages to " + ((ConnectionToClient) (blockedMe.get(i))).getInfo("loginId") + " are being blocked.");
-					} catch (IOException e) {
-						serverUI.display("Message could not be sent to the client.");
-					}
-				}
+				WhoBlocksMeCmd(client);
+			} else if (cmd.equals("setchannel")){
+				SetChannelCmd(client, message);
 			}
 		}	
 	}
@@ -194,22 +132,55 @@ public class EchoServer extends AbstractServer
 	protected void clientDisconnected(ConnectionToClient client){
 		String msg = client.getInfo("loginId") + " has disconnected!";
 		//removeUser((String) client.getInfo("loginId"));
-		serverUI.display(msg);
-		sendToAllClients(msg);		
+		if(client.getInfo("loginId") != null){
+			serverUI.display(msg);
+			sendToAllClients(msg);		
+		}
 	}
-
 
 	//Class methods ***************************************************
 
 	/**
-	 * This method removes a user from the user list
+	 * Handles login requests from clients
 	 */
-	private void removeUser(String id) {
-		for(int i= 0; i < users.size(); i++){
-			if(users.get(i).equals(id)){
-				users.remove(i);
+	private boolean loginRecived(ConnectionToClient client, String id) {
+		String clientOrigLogin = (String) client.getInfo("loginId");
+		if(clientOrigLogin != null){
+			try {
+				client.sendToClient("ERROR- You have already logged in with user id: " + clientOrigLogin + ".");				
+			} catch (IOException e1) {
+				serverUI.display("ERROR- Unable to send login error message to client: " + clientOrigLogin);
 			}
+			return false;
 		}
+		try{
+			Thread[] clients = this.getClientConnections();
+			for(int i = 0; i < clients.length; i++){
+				if(((ConnectionToClient)clients[i]).getInfo("loginId").equals(id)){
+					//User is already logged in
+					try {
+						client.sendToClient("ERROR- A user with the id: " + id + " has is already online. Awaiting Command");
+						serverUI.display("A client with duplicate loginId: " + id + " has tried to login and was refused.");
+						client.close();
+					} catch (IOException e) {
+						serverUI.display("ERROR- Unable to send login error message to client: " + id);
+					}
+					return false;
+				}
+			}
+		} catch (RuntimeException e){} //Catches when there are no clients to getClientConnections
+		//first unique login for client
+		client.setInfo("loginId", id);
+		users.add(id);
+		
+		//Initially put all users into public chat
+		client.setInfo("channel", "public");
+
+		//TODO: Need to update this to sent messages to only people in same channel, online, not blocked ect...
+		sendToAllClients(id + " has logged on.");
+		serverUI.display(id + " has logged on.");
+
+		return  true;
 	}
 
 	/**
@@ -257,6 +228,101 @@ public class EchoServer extends AbstractServer
 	}
 
 	/**
+	 * Handles unblock commands from clients
+	 */
+	private void UnblockCmd(ConnectionToClient client, String message) {
+		String cmd = getCommand(message);
+		int cmdEnd = message.indexOf(' ');
+
+		if (message.trim().equals("#"+cmd)) { //#unblock all command
+			if (getBlocks(client).isEmpty()) {
+				try {
+					client.sendToClient("No blocking is in effect.");
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
+			}else { //
+				ArrayList<String> blocks = getBlocks(client);
+				for (int i = 0; i < blocks.size(); i++) {
+					try {
+						client.sendToClient("Messages from " + blocks.get(i) + " will now be displayed.");
+						if( blocks.get(i).equals("server"))
+							serverMuteUsers.remove(client.getInfo("loginId"));
+					} catch (IOException e) {
+						serverUI.display("Message could not be sent to the client.");
+					}
+				}
+				client.setInfo("Blocked", new ArrayList<String>());
+			}
+		}else { //#unblock user command
+			serverMuteUsers.remove(client.getInfo("loginId"));
+			String unBlockee = message.substring(cmdEnd+1, message.length());
+			if(Unblock(client,unBlockee)){
+				try {
+					client.sendToClient("Messages from " + unBlockee + " will now be displayed.");
+					if( unBlockee.equals("server"))
+						serverMuteUsers.remove("server");
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
+			}else {
+				try {
+					client.sendToClient("Messages from " + unBlockee + " were not blocked");
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
+			}
+		}		
+	}
+
+	/**
+	 * displays to client list of users the client blocks
+	 */
+	private void WhoIBlockCmd(ConnectionToClient client) {
+		ArrayList<String> iBlocked = getBlocks(client);
+		if (iBlocked.isEmpty()) {
+			try {
+				client.sendToClient("No blocking is in effect.");
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to the client.");
+			}
+		}else {
+			for (int i = 0; i < iBlocked.size(); i++) {
+				try {
+					client.sendToClient("Messages from " + iBlocked.get(i) + " are blocked.");
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
+			}
+		}
+
+	}
+
+	/**
+	 * displays to client list of users that block the client
+	 */
+	private void WhoBlocksMeCmd(ConnectionToClient client) {
+		ArrayList<Thread> blockedMe = getBlockedMe(client);
+		for (int i = 0; i < blockedMe.size(); i++) {
+			try {
+				client.sendToClient("Messages to " + ((ConnectionToClient) (blockedMe.get(i))).getInfo("loginId") + " are being blocked.");
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to the client.");
+			}
+		}		
+	}
+
+	/**
+	 * Parses out and returns the command from a string message
+	 */
+	private String getCommand(String message) {
+		int cmdEnd = message.indexOf(' ');
+		if (cmdEnd < 1) 
+			cmdEnd = message.length();
+		return message.substring(1, cmdEnd);
+	}
+
+	/**
 	 * This method gets the clients blocked users
 	 */
 	private ArrayList<String> getBlocks(ConnectionToClient client) {
@@ -284,16 +350,19 @@ public class EchoServer extends AbstractServer
 	/**
 	 * This method sends a message to all unblocked clients
 	 */
-	private void SendToUnblockedClients(Object msg, ConnectionToClient client){
+	private void SelectiveSendToClients(Object msg, ConnectionToClient client){
+		String channel = (String) client.getInfo("channel");
 		ArrayList<Thread> blockedMe = getBlockedMe(client);
 		Thread[] clientThreadList = getClientConnections();
 
 		for (int i=0; i<clientThreadList.length; i++)
 		{
-			ConnectionToClient conn= (ConnectionToClient) clientThreadList[i];
-			if (!blockedMe.contains(conn)) {
+			ConnectionToClient recipClient= (ConnectionToClient) clientThreadList[i];
+			String recipChannel = (String) recipClient.getInfo("channel");
+			if (!blockedMe.contains(recipClient) && recipChannel.equals(channel)) {
 				try {
-					conn.sendToClient(msg);
+					//Not blocked and in same channel
+					recipClient.sendToClient(msg);
 				} catch (IOException e) {
 					serverUI.display("Message could not be sent to the client.");
 				}
@@ -332,6 +401,30 @@ public class EchoServer extends AbstractServer
 			return true;
 		} 
 		return false;
+	}
+
+	/**
+	 * Sets the clients chat channel
+	 */
+	private void SetChannelCmd(ConnectionToClient client, String message) {
+		String newChannel = message.substring(message.indexOf(' ')+1, message.length());
+		client.setInfo("channel", newChannel);
+		try {
+			client.sendToClient("Channel has been set to: " + newChannel);
+		} catch (IOException e) {
+			serverUI.display("ERROR- Unable to send message to client: " + client.getInfo("loginId"));
+		}
+	}
+	
+	/**
+	 * This method removes a user from the user list
+	 */
+	private void removeUser(String id) {
+		for(int i= 0; i < users.size(); i++){
+			if(users.get(i).equals(id)){
+				users.remove(i);
+			}
+		}
 	}
 
 	/**
