@@ -21,86 +21,116 @@ import java.util.ArrayList;
  */
 public class ChatClient extends AbstractClient
 {
-  //Instance variables **********************************************
-	
-  /**
-   * The interface type variable.  It allows the implementation of 
-   * the display method in the client.
-   */
-  private ChatIF clientUI;
-  private String loginId;
-  private Boolean connected;
-  private String channel;
-  
-  //Constructors ****************************************************
-  
-  /**
-   * Constructs an instance of the chat client.
-   *
-   * @param host The server to connect to.
-   * @param port The port number to connect on.
-   * @param clientUI The interface type variable.
-   */
-  
-  public ChatClient(ChatIF UI){
-	  super("localhost",5555);
-	  clientUI = UI;
-	  connected = false;
-	  channel = "public";
-  }
-  
-  public ChatClient(String id, String host, int port, ChatIF UI) 
-  throws IOException 
-  {
-    super(host, port); //Call the superclass constructor
-    clientUI = UI;
-    loginId = id;
-    channel = "public";
-  
-    openConnection();
-    try {
-		sendToServer("#login " + loginId);
-	} catch (IOException e) {
-		clientUI.display("ERROR - No login ID specified. Connection aborted.");
+	//Instance variables **********************************************
+
+	/**
+	 * The interface type variable.  It allows the implementation of 
+	 * the display method in the client.
+	 */
+	private ChatIF clientUI;
+	private String loginId;
+	private String channel;
+	private String monitor;
+	private Boolean connected;  
+	private Boolean inMeeting;
+
+
+	//Constructors ****************************************************
+
+	/**
+	 * Constructs an instance of the chat client.
+	 *
+	 * @param host The server to connect to.
+	 * @param port The port number to connect on.
+	 * @param clientUI The interface type variable.
+	 */  
+	public ChatClient(ChatIF UI){
+		super("localhost",5555);
+		clientUI = UI;
+		connected = false;
+		channel = "public";
+		inMeeting = false;
 	}
-  }
-  
-  
-  //Instance methods ************************************************
-    
-  /**
-   * This method handles all data that comes in from the server.
-   *
-   * @param msg The message from the server.
-   */
-  public void handleMessageFromServer(Object msg) 
-  {
-	  clientUI.display(msg.toString());
-  }
 
-  /**
-   * This method handles all data coming from the UI            
-   *
-   * @param message The message from the UI.    
-   */
-  public void handleMessageFromClientUI(String message)
-  {
-	if(!message.startsWith("#"))//message
-	{
+	public ChatClient(String id, String host, int port, ChatIF UI) 
+			throws IOException 
+			{
+		super(host, port); //Call the superclass constructor
+		clientUI = UI;
+		loginId = id;
+		channel = "public";
+		inMeeting = false;
+
+		openConnection();
 		try {
-		    sendToServer(message);
-		} catch(IOException e) {
-		    clientUI.display("Could not send message to server. Terminating client.");
-		    quit();
+			sendToServer("#login " + loginId);
+		} catch (IOException e) {
+			clientUI.display("ERROR - No login ID specified. Connection aborted.");
 		}
-	} else { //command
-		int cmdEnd = message.indexOf(' ');
-		if (cmdEnd < 1) 
-			cmdEnd = message.length();
-		String cmd = message.substring(1, cmdEnd);
+			}
 
-		//Switch based on user command
-		switch (cmd.toLowerCase()) {
+
+	//Instance methods ************************************************
+
+	/**
+	 * This method handles all data that comes in from the server.
+	 *
+	 * @param msg The message from the server.
+	 */
+	public void handleMessageFromServer(Object msg) 
+	{
+		String message = msg.toString();
+		if(!message.startsWith("#")){
+			if(!inMeeting)
+				clientUI.display(message);
+			else {
+				//In meeting so forward msg to monitor
+				try {
+					sendToServer("#forward " + monitor + " " + message);
+				} catch (IOException e) {
+					clientUI.display("Unable to forward message to server.");
+				}
+			}
+		} else { //command
+			int cmdEnd = message.indexOf(' ');
+			if (cmdEnd < 1) 
+				cmdEnd = message.length();
+			String cmd = message.substring(1, cmdEnd);
+
+			//Switch based on user command
+			switch (cmd.toLowerCase()) {
+			case "meeting":
+				monitor = message.substring(cmdEnd+1);
+				inMeeting = true;
+				clientUI.display("In meeting: " + monitor + " will now receive your messages. When you return type #endmeeting to cancel forwarding.");
+				break;
+			}
+		}
+	}
+
+	/**
+	 * This method handles all data coming from the UI            
+	 *
+	 * @param message The message from the UI.    
+	 */
+	public void handleMessageFromClientUI(String message)
+	{
+		if(!message.startsWith("#"))//message
+		{
+			try {
+				sendToServer(message);
+			} catch(IOException e) {
+				clientUI.display("Could not send message to server. Terminating client.");
+				quit();
+			}
+		} else { //command
+			int cmdEnd = message.indexOf(' ');
+			if (cmdEnd < 1) 
+				cmdEnd = message.length();
+			String cmd = message.substring(1, cmdEnd);
+
+			//Switch based on user command
+			switch (cmd.toLowerCase()) {
 			case "quit" :
 				quit();
 				break;
@@ -203,50 +233,59 @@ public class ChatClient extends AbstractClient
 					clientUI.display("Block list could not be retrived.");
 				}				
 				break;
+			case "meeting" :
+				try {sendToServer(message);
+				} catch (IOException e) {
+					clientUI.display("Block list could not be retrived.");
+				}				
+				break;
+			case "endmeeting":
+				inMeeting = false;
+				break;
 			default: 
 				clientUI.display("Command not recognized.");
-				}
+			}
 		}
 	}
 
-  /**
-   * Called when the connection to the server is closed.
-   */
-  protected void connectionException(){
-	  connected = false;
-	  clientUI.display("Abnormal termination of connection");
-  }
-  
-  /**
-   * Called when the connection to the server is closed.
-   */
-  protected void connectionClosed(){
-	try {
-		closeConnection();
-	} catch (IOException e) {
-
+	/**
+	 * Called when the connection to the server is closed.
+	 */
+	protected void connectionException(){
+		connected = false;
+		clientUI.display("Abnormal termination of connection");
 	}
-	  connected = false;
-  }
-  
-  protected void connectionEstablished(){	  
-	  connected = true;	  
-  }
-  
-  /**
-   * This method terminates the client.
-   */
-  public void quit()
-  {
-	  if(connected){
-		  try
-		    {
-		      closeConnection(); 
-		      connected = false;
-		    }
-		    catch(IOException e) {}
-	  }
-	  System.exit(0);
-  }
+
+	/**
+	 * Called when the connection to the server is closed.
+	 */
+	protected void connectionClosed(){
+		try {
+			closeConnection();
+		} catch (IOException e) {
+
+		}
+		connected = false;
+	}
+
+	protected void connectionEstablished(){	  
+		connected = true;	  
+	}
+
+	/**
+	 * This method terminates the client.
+	 */
+	public void quit()
+	{
+		if(connected){
+			try
+			{
+				closeConnection(); 
+				connected = false;
+			}
+			catch(IOException e) {}
+		}
+		System.exit(0);
+	}
 }
 //End of ChatClient class

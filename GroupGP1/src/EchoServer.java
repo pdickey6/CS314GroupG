@@ -93,40 +93,136 @@ public class EchoServer extends AbstractServer
 				SetChannelCmd(client, message);
 			} else if (cmd.equals("private")){
 				SendPvtMsg(client, message);
-			}
+			} else if (cmd.equals("meeting")){
+				NewMeeting(client, message);
+			} else if (cmd.equals("forward")){
+				ForwardMessage(client, message);
+			} 
 		}	
 	}
 
+
 	/**
-	 * parses out command message and sends private message
-	 * @param sender
-	 * @param message
+	 * This method handles incoming messages from the server UI
 	 */
-
-	private void SendPvtMsg(ConnectionToClient sender, String message) {
-		int startIndex = message.indexOf(' ');
-		int endIndex =  message.indexOf(' ', startIndex +1);
-		String recipient = message.substring(startIndex +1, endIndex);
-		String msg = message.substring(endIndex +1);
-		SendMessageToClient(sender, recipient, msg);		
-	}
-
-	private void SendMessageToClient(ConnectionToClient sender, String recipient, String msg) {
-		ArrayList<Thread> blockedSender = getBlockedMe(sender);
-		Thread[] clientList = getClientConnections();
-
-		for (int i=0; i<clientList.length; i++)
-		{
-			ConnectionToClient client= (ConnectionToClient) clientList[i];
-			if (!blockedSender.contains(client) && client.getInfo("loginId").equals(recipient)) {
-				try {
-					//Not blocked and specified recipient
-					client.sendToClient(sender.getInfo("loginId") + "> (Private) " + msg);
-					sender.sendToClient(sender.getInfo("loginId") + "> (Private) " + msg);
-				} catch (IOException e) {
-					serverUI.display("Message could not be sent to the client.");
+	public void handleMessageFromServerUI(String message) {
+		if(!message.startsWith("#")) {//Server Msg			
+			serverUI.display(message);
+			SendToServerFriendlyClients("SERVER MSG> " + message);
+		} else {
+			int cmdEnd = message.indexOf(' ');
+			if (cmdEnd < 1) 
+				cmdEnd = message.length();
+			String cmd = message.substring(1, cmdEnd);
+	
+			//Switch based on user command
+			switch (cmd) {
+			case "quit" :
+				if(!isClosed()){
+					try {
+						//send msg before closing
+						sendToAllClients("WARNING - The server has closed. Awaiting command.");
+						close();
+					} catch (IOException e) {
+						serverUI.display("Unable to close.");
+					}
 				}
-			}
+				System.exit(0);
+	
+				break;
+			case "stop" :
+				if(!isListening())
+					serverUI.display("Server is already stopped.");
+				else {
+					stopListening();
+				}
+				break;
+			case "close" :
+				if(isClosed())
+					serverUI.display("Server is already closed");
+				else {
+					try{
+						sendToAllClients("SERVER SHUTTING DOWN! DISCONNECTING!");
+						sendToAllClients("Abnormal termination of connection");
+						close();
+					} catch (IOException e){
+						serverUI.display("Unable to close.");
+					}
+				}
+				break;
+			case "setport" :
+				if(!isClosed())
+					serverUI.display("Can not set port untill the server is closed.");
+				else {
+					try{
+						int port = Integer.parseInt(message.substring(cmdEnd +1, message.length()));
+						setPort(port);
+						serverUI.display("Port set to: " + port);
+					}catch (NumberFormatException e){
+						serverUI.display("Port could not be set");
+					}	
+				}
+				break;
+			case "start" :
+				if(isListening())
+					serverUI.display("Server is already listening.");
+				else {
+					try {							
+						listen();
+					} catch (IOException e) {
+						serverUI.display("Unable to start listening.");
+					}
+				}
+				break;
+			case "getport" :
+				serverUI.display("Current Port: " + getPort());				
+				break;
+			case "block" :
+				String blockee = message.substring(cmdEnd+1, message.length());				
+	
+				if(!users.contains(blockee)){
+					serverUI.display("User " + blockee + " does not exist.");
+				} else if(blockedClients.contains(blockee)){
+					serverUI.display("Messages from " + blockee + " were already blocked.");					
+				} else {
+					serverUI.display("Messages from " + blockee + " will be blocked.");
+					blockedClients.add(blockee);	
+				}
+				break;
+			case "unblock" :
+				if (message.trim().equals("#"+cmd)) { //#unblock all command
+					if (blockedClients.isEmpty()) {
+						serverUI.display("No blocking is in effect.");
+					}else { //
+						for (int i = 0; i < blockedClients.size(); i++) {
+							serverUI.display("Messages from " + blockedClients.get(i) + " will now be displayed.");
+						}
+						blockedClients.clear();
+					}
+				} else {
+					String unBlockee = message.substring(cmdEnd+1, message.length());	
+					if(blockedClients.contains(unBlockee)){
+						blockedClients.remove(unBlockee);
+						serverUI.display("Messages from " + unBlockee + " will now be displayed" );
+					}
+					else{
+						serverUI.display("Messages from " + unBlockee + " were not blocked");
+					}
+				}
+	
+				break;
+			case "whoiblock" :
+				if (blockedClients.isEmpty()) {
+					serverUI.display("No blocking is in effect.");
+				}else {
+					for (int i = 0; i < blockedClients.size(); i++) {
+						serverUI.display("Messages from " + blockedClients.get(i) + " are blocked.");
+					}
+				}
+				break;
+			default: 
+				serverUI.display("Command not recognized.");
+			}		
 		}
 	}
 
@@ -148,7 +244,7 @@ public class EchoServer extends AbstractServer
 		serverUI.display("Server has stopped listening for connections.");
 		sendToAllClients("WARNING - The server has stopped listening for connections");
 	}
-	
+
 	/**
 	 * This method overrides the one in the superclass.  Called
 	 * when a client connects.
@@ -206,7 +302,7 @@ public class EchoServer extends AbstractServer
 		//first unique login for client
 		client.setInfo("loginId", id);
 		users.add(id);
-		
+
 		//Initially put all users into public chat
 		client.setInfo("channel", "public");
 
@@ -259,6 +355,31 @@ public class EchoServer extends AbstractServer
 				serverUI.display("ERROR - Failed to send message to client " + blocker);
 			}
 		}
+	}
+
+	private void NewMeeting(ConnectionToClient client, String message) {
+	
+		String monitor = message.substring(message.indexOf(' ') +1);
+		if(client.getInfo("loginId").equals(monitor)){
+			try {
+				client.sendToClient("ERROR - You cannot monitor your own chat.");
+			} catch (IOException e) {
+				serverUI.display("ERROR - Failed to send message to client");
+			}
+		} else if(!UserExists(monitor)){
+			try {
+				client.sendToClient("ERROR - User to monitor chat must exist.");
+			} catch (IOException e) {
+				serverUI.display("ERROR - Failed to send message to client");
+			}
+		} else {
+			try {
+				client.sendToClient("#meeting " + monitor);
+			} catch (IOException e) {
+				serverUI.display("ERROR - Failed to send message to client");
+			}
+			SendMessageToClient(client, monitor, client.getInfo("loginId") + " is in a meeting and has picked you to monitor their chat. You will now receive all of " + client.getInfo("loginId") + "'s messages"); 
+		}		
 	}
 
 	/**
@@ -347,13 +468,28 @@ public class EchoServer extends AbstractServer
 	}
 
 	/**
-	 * Parses out and returns the command from a string message
+	 * This method unblocks the unBlockee from the clients block list
 	 */
-	private String getCommand(String message) {
-		int cmdEnd = message.indexOf(' ');
-		if (cmdEnd < 1) 
-			cmdEnd = message.length();
-		return message.substring(1, cmdEnd).toLowerCase();
+	private boolean Unblock(ConnectionToClient client, String unBlockee) {
+		ArrayList<String> blocks = getBlocks(client);
+		if (blocks.contains(unBlockee)) {
+			blocks.remove(unBlockee); 
+			return true;
+		} 
+		return false;
+	}
+
+	/**
+	 * Sets the clients chat channel
+	 */
+	private void SetChannelCmd(ConnectionToClient client, String message) {
+		String newChannel = message.substring(message.indexOf(' ')+1, message.length());
+		client.setInfo("channel", newChannel);
+		try {
+			client.sendToClient("Channel has been set to: " + newChannel);
+		} catch (IOException e) {
+			serverUI.display("ERROR- Unable to send message to client: " + client.getInfo("loginId"));
+		}
 	}
 
 	/**
@@ -382,6 +518,48 @@ public class EchoServer extends AbstractServer
 	}
 
 	/**
+	 * Parses out and returns the command from a string message
+	 */
+	private String getCommand(String message) {
+		int cmdEnd = message.indexOf(' ');
+		if (cmdEnd < 1) 
+			cmdEnd = message.length();
+		return message.substring(1, cmdEnd).toLowerCase();
+	}
+
+	/**
+	 * Determines if the given userId exists
+	 */
+	private boolean UserExists(String userId) {
+		Thread[] clientList = getClientConnections();
+		for (int i=0; i<clientList.length; i++)
+		{
+			if(((ConnectionToClient) clientList[i]).getInfo("loginId").equals(userId))
+				return true;
+		}
+		return false;
+	}
+
+	private void ForwardMessage(ConnectionToClient sender, String message) {
+		int startIndex = message.indexOf(' ');
+		int endIndex =  message.indexOf(' ', startIndex +1);
+		String recipient = message.substring(startIndex +1, endIndex);
+		String msg = message.substring(endIndex +1);
+		
+		//Check if recipient is sender
+		String s = (String) sender.getInfo("loginId");
+		if(sender.getInfo("loginId").equals(recipient)){
+			try {
+				sender.sendToClient("ERROR- You cannot send a message to yourself.");
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to client.");
+			}
+			return;
+		}
+		SendMessageToClient(sender, recipient, msg);
+	}
+
+	/**
 	 * This method sends a message to all unblocked clients
 	 */
 	private void SelectiveSendToClients(Object msg, ConnectionToClient client){
@@ -402,7 +580,18 @@ public class EchoServer extends AbstractServer
 				}
 			}
 		}
+	}
 
+	/**
+	 * parses out command message and sends private message
+	 */	
+	private void SendPvtMsg(ConnectionToClient sender, String message) {
+		int startIndex = message.indexOf(' ');
+		int endIndex =  message.indexOf(' ', startIndex +1);
+		String recipient = message.substring(startIndex +1, endIndex);
+		String msg = message.substring(endIndex +1);
+		msg = "(Private) " + msg;
+		SendMessageToClient(sender, recipient, msg);		
 	}
 
 	/**
@@ -425,31 +614,34 @@ public class EchoServer extends AbstractServer
 		}
 	}
 
-	/**
-	 * This method unblocks the unBlockee from the clients block list
-	 */
-	private boolean Unblock(ConnectionToClient client, String unBlockee) {
-		ArrayList<String> blocks = getBlocks(client);
-		if (blocks.contains(unBlockee)) {
-			blocks.remove(unBlockee); 
-			return true;
-		} 
-		return false;
-	}
-
-	/**
-	 * Sets the clients chat channel
-	 */
-	private void SetChannelCmd(ConnectionToClient client, String message) {
-		String newChannel = message.substring(message.indexOf(' ')+1, message.length());
-		client.setInfo("channel", newChannel);
-		try {
-			client.sendToClient("Channel has been set to: " + newChannel);
-		} catch (IOException e) {
-			serverUI.display("ERROR- Unable to send message to client: " + client.getInfo("loginId"));
+	private void SendMessageToClient(ConnectionToClient sender, String recipient, String msg) {
+		//Check if recipient exists
+		if(!UserExists(recipient)){
+			try {
+				sender.sendToClient("ERROR- User " + recipient + " does not exist.");
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to client.");
+			}
+			return;
+		}
+		ArrayList<Thread> blockedSender = getBlockedMe(sender);
+		Thread[] clientList = getClientConnections();
+	
+		for (int i=0; i<clientList.length; i++)
+		{
+			ConnectionToClient client= (ConnectionToClient) clientList[i];
+			if (!blockedSender.contains(client) && client.getInfo("loginId").equals(recipient)) {
+				try {
+					//Not blocked and specified recipient, send msg
+					client.sendToClient(sender.getInfo("loginId") + "> " + msg);
+					//sender.sendToClient(sender.getInfo("loginId") + "> " + msg);
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to client.");
+				}
+			}
 		}
 	}
-	
+
 	/**
 	 * This method removes a user from the user list
 	 */
@@ -458,130 +650,6 @@ public class EchoServer extends AbstractServer
 			if(users.get(i).equals(id)){
 				users.remove(i);
 			}
-		}
-	}
-
-	/**
-	 * This method handles incoming messages from the server UI
-	 */
-	public void handleMessageFromServerUI(String message) {
-		if(!message.startsWith("#")) {//Server Msg			
-			serverUI.display(message);
-			SendToServerFriendlyClients("SERVER MSG> " + message);
-		} else {
-			int cmdEnd = message.indexOf(' ');
-			if (cmdEnd < 1) 
-				cmdEnd = message.length();
-			String cmd = message.substring(1, cmdEnd);
-
-			//Switch based on user command
-			switch (cmd) {
-			case "quit" :
-				if(!isClosed()){
-					try {
-						//send msg before closing
-						sendToAllClients("WARNING - The server has closed. Awaiting command.");
-						close();
-					} catch (IOException e) {
-						serverUI.display("Unable to close.");
-					}
-				}
-				System.exit(0);
-
-				break;
-			case "stop" :
-				if(!isListening())
-					serverUI.display("Server is already stopped.");
-				else {
-					stopListening();
-				}
-				break;
-			case "close" :
-				if(isClosed())
-					serverUI.display("Server is already closed");
-				else {
-					try{
-						sendToAllClients("SERVER SHUTTING DOWN! DISCONNECTING!");
-						sendToAllClients("Abnormal termination of connection");
-						close();
-					} catch (IOException e){
-						serverUI.display("Unable to close.");
-					}
-				}
-				break;
-			case "setport" :
-				if(!isClosed())
-					serverUI.display("Can not set port untill the server is closed.");
-				else {
-					try{
-						int port = Integer.parseInt(message.substring(cmdEnd +1, message.length()));
-						setPort(port);
-						serverUI.display("Port set to: " + port);
-					}catch (NumberFormatException e){
-						serverUI.display("Port could not be set");
-					}	
-				}
-				break;
-			case "start" :
-				if(isListening())
-					serverUI.display("Server is already listening.");
-				else {
-					try {							
-						listen();
-					} catch (IOException e) {
-						serverUI.display("Unable to start listening.");
-					}
-				}
-				break;
-			case "getport" :
-				serverUI.display("Current Port: " + getPort());				
-				break;
-			case "block" :
-				String blockee = message.substring(cmdEnd+1, message.length());				
-
-				if(!users.contains(blockee)){
-					serverUI.display("User " + blockee + " does not exist.");
-				} else if(blockedClients.contains(blockee)){
-					serverUI.display("Messages from " + blockee + " were already blocked.");					
-				} else {
-					serverUI.display("Messages from " + blockee + " will be blocked.");
-					blockedClients.add(blockee);	
-				}
-				break;
-			case "unblock" :
-				if (message.trim().equals("#"+cmd)) { //#unblock all command
-					if (blockedClients.isEmpty()) {
-						serverUI.display("No blocking is in effect.");
-					}else { //
-						for (int i = 0; i < blockedClients.size(); i++) {
-							serverUI.display("Messages from " + blockedClients.get(i) + " will now be displayed.");
-						}
-						blockedClients.clear();
-					}
-				} else {
-					String unBlockee = message.substring(cmdEnd+1, message.length());	
-					if(blockedClients.contains(unBlockee)){
-						blockedClients.remove(unBlockee);
-						serverUI.display("Messages from " + unBlockee + " will now be displayed" );
-					}
-					else{
-						serverUI.display("Messages from " + unBlockee + " were not blocked");
-					}
-				}
-
-				break;
-			case "whoiblock" :
-				if (blockedClients.isEmpty()) {
-					serverUI.display("No blocking is in effect.");
-				}else {
-					for (int i = 0; i < blockedClients.size(); i++) {
-						serverUI.display("Messages from " + blockedClients.get(i) + " are blocked.");
-					}
-				}
-				break;
-			default: 
-				serverUI.display("Command not recognized.");
-			}		
 		}
 	}
 
