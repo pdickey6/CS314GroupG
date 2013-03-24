@@ -100,7 +100,7 @@ public class ChatClient extends AbstractClient
 		String cmd = message.substring(1, cmdEnd);
 
 		//Switch based on user command
-		switch (cmd) {
+		switch (cmd.toLowerCase()) {
 			case "quit" :
 				quit();
 				break;
@@ -196,6 +196,12 @@ public class ChatClient extends AbstractClient
 				} catch (IOException e) {
 					clientUI.display("Block list could not be retrived.");
 				}
+				break;
+			case "private":
+				try {sendToServer(message);
+				} catch (IOException e) {
+					clientUI.display("Block list could not be retrived.");
+				}				
 				break;
 			default: 
 				clientUI.display("Command not recognized.");

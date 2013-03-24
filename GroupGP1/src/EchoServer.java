@@ -91,10 +91,44 @@ public class EchoServer extends AbstractServer
 				WhoBlocksMeCmd(client);
 			} else if (cmd.equals("setchannel")){
 				SetChannelCmd(client, message);
+			} else if (cmd.equals("private")){
+				SendPvtMsg(client, message);
 			}
 		}	
 	}
 
+	/**
+	 * parses out command message and sends private message
+	 * @param sender
+	 * @param message
+	 */
+
+	private void SendPvtMsg(ConnectionToClient sender, String message) {
+		int startIndex = message.indexOf(' ');
+		int endIndex =  message.indexOf(' ', startIndex +1);
+		String recipient = message.substring(startIndex +1, endIndex);
+		String msg = message.substring(endIndex +1);
+		SendMessageToClient(sender, recipient, msg);		
+	}
+
+	private void SendMessageToClient(ConnectionToClient sender, String recipient, String msg) {
+		ArrayList<Thread> blockedSender = getBlockedMe(sender);
+		Thread[] clientList = getClientConnections();
+
+		for (int i=0; i<clientList.length; i++)
+		{
+			ConnectionToClient client= (ConnectionToClient) clientList[i];
+			if (!blockedSender.contains(client) && client.getInfo("loginId").equals(recipient)) {
+				try {
+					//Not blocked and specified recipient
+					client.sendToClient(sender.getInfo("loginId") + "> (Private) " + msg);
+					sender.sendToClient(sender.getInfo("loginId") + "> (Private) " + msg);
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
+			}
+		}
+	}
 
 	/**
 	 * This method overrides the one in the superclass.  Called
@@ -319,7 +353,7 @@ public class EchoServer extends AbstractServer
 		int cmdEnd = message.indexOf(' ');
 		if (cmdEnd < 1) 
 			cmdEnd = message.length();
-		return message.substring(1, cmdEnd);
+		return message.substring(1, cmdEnd).toLowerCase();
 	}
 
 	/**
