@@ -114,7 +114,7 @@ public class EchoServer extends AbstractServer
 		serverUI.display("Server has stopped listening for connections.");
 		sendToAllClients("WARNING - The server has stopped listening for connections");
 	}
-
+	
 	/**
 	 * This method overrides the one in the superclass.  Called
 	 * when a client connects.
@@ -445,6 +445,8 @@ public class EchoServer extends AbstractServer
 			case "quit" :
 				if(!isClosed()){
 					try {
+						//send msg before closing
+						sendToAllClients("WARNING - The server has closed. Awaiting command.");
 						close();
 					} catch (IOException e) {
 						serverUI.display("Unable to close.");
