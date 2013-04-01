@@ -5,6 +5,9 @@
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import com.lloseng.ocsf.server.*;
 
@@ -31,10 +34,29 @@ public class EchoServer extends AbstractServer
 
 	//Instance variables *************************************************
 
-	private ChatIF serverUI;
+	private ChatIF serverUI;	
 	ArrayList<String> users;
 	ArrayList<String> serverMuteUsers;
 	ArrayList<String> blockedClients;
+
+	TimerTask StatusTask = new TimerTask(){
+		@Override
+		public void run(){
+			Date now = new Date();
+			Thread[] t = getClientConnections();
+			for(int i = 0; i < t.length; i ++){
+				ConnectionToClient tempClient = (ConnectionToClient) t[i];
+				Date lastActive = (Date) tempClient.getInfo("lastAct");
+				long temp = now.getTime() - lastActive.getTime();
+				long secstemp = temp/1000;				
+				if(now.getTime() - lastActive.getTime() >= 300000.0) {// 300000ms == 5min
+					//Idle for more than 5 min
+					if(tempClient.getInfo("status").equals("online"))
+						tempClient.setInfo("status", "idle");
+				}
+			}
+		}
+	};
 
 	//Constructor ****************************************************
 
@@ -45,6 +67,9 @@ public class EchoServer extends AbstractServer
 		users = new ArrayList<String>();
 		serverMuteUsers = new ArrayList<String>();
 		blockedClients = new ArrayList<String>();
+		Timer UpdateTimer = new Timer();
+		//Run "idol status updater" every 10 sec
+		UpdateTimer.scheduleAtFixedRate(StatusTask, 0, 10000);
 		try {
 			this.listen();
 		} catch (IOException e) {
@@ -62,6 +87,12 @@ public class EchoServer extends AbstractServer
 	 */
 	public void handleMessageFromClient(Object msg, ConnectionToClient client)
 	{
+		//Update client last active time
+		client.setInfo("lastAct", new Date());
+
+		if(client.getInfo("status").equals("idle"))
+			client.setInfo("status", "online");
+
 		String message = msg.toString();
 		if(blockedClients.contains(client.getInfo("loginId")) && !message.startsWith("#")) {
 			return;
@@ -75,11 +106,11 @@ public class EchoServer extends AbstractServer
 			SelectiveSendToClients(client.getInfo("loginId") + "> " + msg, client);
 		} else { 
 			//command
-			String cmd = getCommand(message);
+			String cmd = GetCommand(message);
 
 			if(cmd.equals("login")){
 				String id = message.substring(message.indexOf(' ')+1, message.length());
-				boolean validLogin = loginRecived(client, id);						
+				boolean validLogin = LoginRecived(client, id);						
 			} else if (cmd.equals("block")){
 				String blockee = message.substring(message.indexOf(' ')+1, message.length());
 				NewBlock(client,blockee);
@@ -97,10 +128,13 @@ public class EchoServer extends AbstractServer
 				NewMeeting(client, message);
 			} else if (cmd.equals("forward")){
 				ForwardMessage(client, message);
-			} 
+			} else if (cmd.equals("status")){
+				GetStatus(client, message);				
+			} else if (cmd.equals("available") || cmd.equals("notavailable")){
+				SetClientStatus(client, cmd);
+			}
 		}	
 	}
-
 
 	/**
 	 * This method handles incoming messages from the server UI
@@ -114,7 +148,7 @@ public class EchoServer extends AbstractServer
 			if (cmdEnd < 1) 
 				cmdEnd = message.length();
 			String cmd = message.substring(1, cmdEnd);
-	
+
 			//Switch based on user command
 			switch (cmd) {
 			case "quit" :
@@ -128,7 +162,7 @@ public class EchoServer extends AbstractServer
 					}
 				}
 				System.exit(0);
-	
+
 				break;
 			case "stop" :
 				if(!isListening())
@@ -179,7 +213,7 @@ public class EchoServer extends AbstractServer
 				break;
 			case "block" :
 				String blockee = message.substring(cmdEnd+1, message.length());				
-	
+
 				if(!users.contains(blockee)){
 					serverUI.display("User " + blockee + " does not exist.");
 				} else if(blockedClients.contains(blockee)){
@@ -209,7 +243,7 @@ public class EchoServer extends AbstractServer
 						serverUI.display("Messages from " + unBlockee + " were not blocked");
 					}
 				}
-	
+
 				break;
 			case "whoiblock" :
 				if (blockedClients.isEmpty()) {
@@ -251,8 +285,9 @@ public class EchoServer extends AbstractServer
 	 */
 	protected void clientConnected(ConnectionToClient client){
 		client.setInfo("Blocked", new ArrayList<ArrayList<String>>());
+		client.setInfo("status", "online");
 		String msg = "A new client is attempting to connect to the server.";
-		serverUI.display(msg);
+		serverUI.display(msg);		
 	}
 
 	/**
@@ -273,7 +308,7 @@ public class EchoServer extends AbstractServer
 	/**
 	 * Handles login requests from clients
 	 */
-	private boolean loginRecived(ConnectionToClient client, String id) {
+	private boolean LoginRecived(ConnectionToClient client, String id) {
 		String clientOrigLogin = (String) client.getInfo("loginId");
 		if(clientOrigLogin != null){
 			try {
@@ -306,7 +341,7 @@ public class EchoServer extends AbstractServer
 		//Initially put all users into public chat
 		client.setInfo("channel", "public");
 
-		//TODO: Need to update this to sent messages to only people in same channel, online, not blocked ect...
+		//TODO: Need to update this to send messages to only people in same channel, online, not blocked ect...
 		sendToAllClients(id + " has logged on.");
 		serverUI.display(id + " has logged on.");
 
@@ -358,7 +393,7 @@ public class EchoServer extends AbstractServer
 	}
 
 	private void NewMeeting(ConnectionToClient client, String message) {
-	
+
 		String monitor = message.substring(message.indexOf(' ') +1);
 		if(client.getInfo("loginId").equals(monitor)){
 			try {
@@ -378,7 +413,7 @@ public class EchoServer extends AbstractServer
 			} catch (IOException e) {
 				serverUI.display("ERROR - Failed to send message to client");
 			}
-			SendMessageToClient(client, monitor, client.getInfo("loginId") + " is in a meeting and has picked you to monitor their chat. You will now receive all of " + client.getInfo("loginId") + "'s messages"); 
+			SendMessageToClient(client, GetClientConnection(monitor), client.getInfo("loginId") + " is in a meeting and has selected you to monitor their chat. You will now receive all of " + client.getInfo("loginId") + "'s messages"); 
 		}		
 	}
 
@@ -386,18 +421,18 @@ public class EchoServer extends AbstractServer
 	 * Handles unblock commands from clients
 	 */
 	private void UnblockCmd(ConnectionToClient client, String message) {
-		String cmd = getCommand(message);
+		String cmd = GetCommand(message);
 		int cmdEnd = message.indexOf(' ');
 
 		if (message.trim().equals("#"+cmd)) { //#unblock all command
-			if (getBlocks(client).isEmpty()) {
+			if (GetBlocks(client).isEmpty()) {
 				try {
 					client.sendToClient("No blocking is in effect.");
 				} catch (IOException e) {
 					serverUI.display("Message could not be sent to the client.");
 				}
 			}else { //
-				ArrayList<String> blocks = getBlocks(client);
+				ArrayList<String> blocks = GetBlocks(client);
 				for (int i = 0; i < blocks.size(); i++) {
 					try {
 						client.sendToClient("Messages from " + blocks.get(i) + " will now be displayed.");
@@ -434,7 +469,7 @@ public class EchoServer extends AbstractServer
 	 * displays to client list of users the client blocks
 	 */
 	private void WhoIBlockCmd(ConnectionToClient client) {
-		ArrayList<String> iBlocked = getBlocks(client);
+		ArrayList<String> iBlocked = GetBlocks(client);
 		if (iBlocked.isEmpty()) {
 			try {
 				client.sendToClient("No blocking is in effect.");
@@ -457,7 +492,7 @@ public class EchoServer extends AbstractServer
 	 * displays to client list of users that block the client
 	 */
 	private void WhoBlocksMeCmd(ConnectionToClient client) {
-		ArrayList<Thread> blockedMe = getBlockedMe(client);
+		ArrayList<Thread> blockedMe = GetBlockedMe(client);
 		for (int i = 0; i < blockedMe.size(); i++) {
 			try {
 				client.sendToClient("Messages to " + ((ConnectionToClient) (blockedMe.get(i))).getInfo("loginId") + " are being blocked.");
@@ -471,7 +506,7 @@ public class EchoServer extends AbstractServer
 	 * This method unblocks the unBlockee from the clients block list
 	 */
 	private boolean Unblock(ConnectionToClient client, String unBlockee) {
-		ArrayList<String> blocks = getBlocks(client);
+		ArrayList<String> blocks = GetBlocks(client);
 		if (blocks.contains(unBlockee)) {
 			blocks.remove(unBlockee); 
 			return true;
@@ -480,22 +515,9 @@ public class EchoServer extends AbstractServer
 	}
 
 	/**
-	 * Sets the clients chat channel
+	 * This method gets the clients) blocked users
 	 */
-	private void SetChannelCmd(ConnectionToClient client, String message) {
-		String newChannel = message.substring(message.indexOf(' ')+1, message.length());
-		client.setInfo("channel", newChannel);
-		try {
-			client.sendToClient("Channel has been set to: " + newChannel);
-		} catch (IOException e) {
-			serverUI.display("ERROR- Unable to send message to client: " + client.getInfo("loginId"));
-		}
-	}
-
-	/**
-	 * This method gets the clients blocked users
-	 */
-	private ArrayList<String> getBlocks(ConnectionToClient client) {
+	private ArrayList<String> GetBlocks(ConnectionToClient client) {
 		ArrayList<String> blocks = (ArrayList<String>) client.getInfo("Blocked");
 		return blocks;
 	}
@@ -503,7 +525,7 @@ public class EchoServer extends AbstractServer
 	/**
 	 * This method gets the users that have blocked the client
 	 */
-	private ArrayList<Thread> getBlockedMe(ConnectionToClient client) {
+	private ArrayList<Thread> GetBlockedMe(ConnectionToClient client) {
 		Thread[] clientThreadList = getClientConnections();
 		ArrayList<Thread> blockedMe = new ArrayList<>();
 		for (int i=0; i<clientThreadList.length; i++)
@@ -518,13 +540,123 @@ public class EchoServer extends AbstractServer
 	}
 
 	/**
+	 * Sends to client the status of user specified in message after the command
+	 * @param message including command ("status") and the name of the user to get status of.
+	 */
+	private void GetStatus(ConnectionToClient client, String message) {
+		int cmdEnd = message.indexOf(' ');
+		String statuseeName = message.substring(cmdEnd+1, message.length());
+		if(!users.contains(statuseeName)){
+			//not a user, check if a channel
+			boolean isChannel = false;
+			Thread[] clients = this.getClientConnections();
+			for(int i = 0; i < clients.length; i++){
+				String channel = (String) ((ConnectionToClient) clients[i]).getInfo("channel");
+				if(channel.equals(statuseeName)){
+					String clientChannel = (String) client.getInfo("channel");
+					if(!clientChannel.equals(statuseeName)){
+						//client is in different channel that info is requested for, display error
+						try {
+							client.sendToClient("You are not authorized to get information about channel " + statuseeName);
+						} catch (IOException e) {
+							serverUI.display("Unable to send status messasge to user.");
+						}
+						return;
+					}
+					isChannel = true;
+					ConnectionToClient tempClient = (ConnectionToClient) clients[i];
+					try {
+						client.sendToClient("User " + tempClient.getInfo("loginId") + " is " + tempClient.getInfo("status") +".");
+					} catch (IOException e) {
+						serverUI.display("Unable to send status messasge to user.");
+					}
+				}
+			}
+			if(!isChannel){
+				try {
+					client.sendToClient("Channel " + statuseeName + " does not exist.");
+				} catch (IOException e) {
+					serverUI.display("Unable to send status messasge to user.");
+				}
+			}
+
+		} else {
+			//show user status
+			ConnectionToClient statusee = GetClientConnection(statuseeName);
+			if(statusee != null){
+				try {
+					client.sendToClient("User " + statuseeName + " is " + (String) statusee.getInfo("status")  + ".");
+				} catch (IOException e) {
+					serverUI.display("Unable to send status messasge to user.");
+				}
+			} else {
+				try {
+					client.sendToClient("User " + statuseeName + " is offline.");
+				} catch (IOException e) {
+					serverUI.display("Unable to send status messasge to user.");
+				}
+			}
+		}
+	}
+
+	private void SetClientStatus(ConnectionToClient client, String status) {
+		try {
+			if(status.equals("available")){
+				client.setInfo("status", "online");
+				client.sendToClient("Your status has been set to online");
+			} else if (status.equals("notavailable")){
+				client.setInfo("status", "unavailable");
+				client.sendToClient("Your status has been set to unavailable");
+			}	
+		} catch (IOException e) {
+			serverUI.display("Unable to send message to client.");
+		}		
+	}
+
+	/**
+	 * Sets the clients chat channel
+	 */
+	private void SetChannelCmd(ConnectionToClient client, String message) {
+		if(client.getInfo("status").equals("unavailable")){
+			try {
+				client.sendToClient("You cannot be added to new channels while you are unavailable");
+			} catch (IOException e) {
+				serverUI.display("ERROR- Unable to send message to client: " + client.getInfo("loginId"));
+			}
+		} else {
+			String newChannel = message.substring(message.indexOf(' ')+1, message.length());
+			client.setInfo("channel", newChannel);
+			try {
+				client.sendToClient("Channel has been set to: " + newChannel);
+			} catch (IOException e) {
+				serverUI.display("ERROR- Unable to send message to client: " + client.getInfo("loginId"));
+			}
+		}
+	}
+
+	/**
 	 * Parses out and returns the command from a string message
 	 */
-	private String getCommand(String message) {
+	private String GetCommand(String message) {
 		int cmdEnd = message.indexOf(' ');
 		if (cmdEnd < 1) 
 			cmdEnd = message.length();
 		return message.substring(1, cmdEnd).toLowerCase();
+	}
+
+	/**
+	 * Gets the ConnectionToClient that has the same name as clientName
+	 * @param clientName
+	 * @return Connection to client with loginId==clientName, null if client not found
+	 */
+	private ConnectionToClient GetClientConnection(String clientName) {
+		Thread[] clients = this.getClientConnections();
+		for(int i = 0; i < clients.length; i++){
+			if(((ConnectionToClient) clients[i]).getInfo("loginId").equals(clientName))
+				return (ConnectionToClient) clients[i];		
+		}
+		//client with clientName not found
+		return null;
 	}
 
 	/**
@@ -545,7 +677,7 @@ public class EchoServer extends AbstractServer
 		int endIndex =  message.indexOf(' ', startIndex +1);
 		String recipient = message.substring(startIndex +1, endIndex);
 		String msg = message.substring(endIndex +1);
-		
+
 		//Check if recipient is sender
 		String s = (String) sender.getInfo("loginId");
 		if(sender.getInfo("loginId").equals(recipient)){
@@ -556,24 +688,24 @@ public class EchoServer extends AbstractServer
 			}
 			return;
 		}
-		SendMessageToClient(sender, recipient, msg);
+		SendMessageToClient(sender, GetClientConnection(recipient), msg);
 	}
 
 	/**
-	 * This method sends a message to all unblocked clients
+	 * This method sends a message to all unblocked, available clients in same channel
 	 */
 	private void SelectiveSendToClients(Object msg, ConnectionToClient client){
 		String channel = (String) client.getInfo("channel");
-		ArrayList<Thread> blockedMe = getBlockedMe(client);
+		ArrayList<Thread> blockedMe = GetBlockedMe(client);
 		Thread[] clientThreadList = getClientConnections();
 
 		for (int i=0; i<clientThreadList.length; i++)
 		{
 			ConnectionToClient recipClient= (ConnectionToClient) clientThreadList[i];
 			String recipChannel = (String) recipClient.getInfo("channel");
-			if (!blockedMe.contains(recipClient) && recipChannel.equals(channel)) {
+			if (!blockedMe.contains(recipClient) && recipChannel.equals(channel) && !recipClient.getInfo("status").equals("unavailable")) {
 				try {
-					//Not blocked and in same channel
+					//available, not blocked, and in same channel
 					recipClient.sendToClient(msg);
 				} catch (IOException e) {
 					serverUI.display("Message could not be sent to the client.");
@@ -586,12 +718,22 @@ public class EchoServer extends AbstractServer
 	 * parses out command message and sends private message
 	 */	
 	private void SendPvtMsg(ConnectionToClient sender, String message) {
-		int startIndex = message.indexOf(' ');
-		int endIndex =  message.indexOf(' ', startIndex +1);
-		String recipient = message.substring(startIndex +1, endIndex);
-		String msg = message.substring(endIndex +1);
-		msg = "(Private) " + msg;
-		SendMessageToClient(sender, recipient, msg);		
+		if(sender.getInfo("status") != "unavailable"){
+
+			int startIndex = message.indexOf(' ');
+			int endIndex =  message.indexOf(' ', startIndex +1);
+			String recipient = message.substring(startIndex +1, endIndex);
+			String msg = message.substring(endIndex +1);
+			msg = "(Private) " + msg;
+			SendMessageToClient(sender, GetClientConnection(recipient), msg);
+		} else {
+			try {
+				sender.sendToClient("You can not send a private message while your status is unavailable");
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to the client.");
+			}
+		}
+
 	}
 
 	/**
@@ -614,9 +756,10 @@ public class EchoServer extends AbstractServer
 		}
 	}
 
-	private void SendMessageToClient(ConnectionToClient sender, String recipient, String msg) {
+	private void SendMessageToClient(ConnectionToClient sender, ConnectionToClient recipient, String msg) {
+
 		//Check if recipient exists
-		if(!UserExists(recipient)){
+		if(recipient == null){
 			try {
 				sender.sendToClient("ERROR- User " + recipient + " does not exist.");
 			} catch (IOException e) {
@@ -624,20 +767,14 @@ public class EchoServer extends AbstractServer
 			}
 			return;
 		}
-		ArrayList<Thread> blockedSender = getBlockedMe(sender);
-		Thread[] clientList = getClientConnections();
-	
-		for (int i=0; i<clientList.length; i++)
-		{
-			ConnectionToClient client= (ConnectionToClient) clientList[i];
-			if (!blockedSender.contains(client) && client.getInfo("loginId").equals(recipient)) {
-				try {
-					//Not blocked and specified recipient, send msg
-					client.sendToClient(sender.getInfo("loginId") + "> " + msg);
-					//sender.sendToClient(sender.getInfo("loginId") + "> " + msg);
-				} catch (IOException e) {
-					serverUI.display("Message could not be sent to client.");
-				}
+		ArrayList<Thread> blockedSender = GetBlockedMe(sender);
+		if (!blockedSender.contains((String) recipient.getInfo("loginId")) && (String) recipient.getInfo("status") != "unavailable") {
+			try {
+				//Not blocked and specified recipient, send msg
+				recipient.sendToClient(sender.getInfo("loginId") + "> " + msg);
+				//sender.sendToClient(sender.getInfo("loginId") + "> " + msg);
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to client.");
 			}
 		}
 	}
@@ -645,7 +782,7 @@ public class EchoServer extends AbstractServer
 	/**
 	 * This method removes a user from the user list
 	 */
-	private void removeUser(String id) {
+	private void RemoveUser(String id) {
 		for(int i= 0; i < users.size(); i++){
 			if(users.get(i).equals(id)){
 				users.remove(i);

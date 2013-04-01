@@ -29,11 +29,9 @@ public class ChatClient extends AbstractClient
 	 */
 	private ChatIF clientUI;
 	private String loginId;
-	private String channel;
 	private String monitor;
 	private Boolean connected;  
-	private Boolean inMeeting;
-
+	private Boolean inMeeting;	
 
 	//Constructors ****************************************************
 
@@ -48,7 +46,6 @@ public class ChatClient extends AbstractClient
 		super("localhost",5555);
 		clientUI = UI;
 		connected = false;
-		channel = "public";
 		inMeeting = false;
 	}
 
@@ -58,8 +55,7 @@ public class ChatClient extends AbstractClient
 		super(host, port); //Call the superclass constructor
 		clientUI = UI;
 		loginId = id;
-		channel = "public";
-		inMeeting = false;
+		inMeeting = false;		
 
 		openConnection();
 		try {
@@ -105,6 +101,8 @@ public class ChatClient extends AbstractClient
 				clientUI.display("In meeting: " + monitor + " will now receive your messages. When you return type #endmeeting to cancel forwarding.");
 				break;
 			}
+
+				
 		}
 	}
 
@@ -224,23 +222,41 @@ public class ChatClient extends AbstractClient
 			case "setchannel":
 				try {sendToServer(message);
 				} catch (IOException e) {
-					clientUI.display("Block list could not be retrived.");
+					clientUI.display("Channel could not be set.");
 				}
 				break;
 			case "private":
 				try {sendToServer(message);
 				} catch (IOException e) {
-					clientUI.display("Block list could not be retrived.");
-				}				
+					clientUI.display("Could not send private message.");
+				}
 				break;
 			case "meeting" :
 				try {sendToServer(message);
 				} catch (IOException e) {
-					clientUI.display("Block list could not be retrived.");
+					clientUI.display("Could not initiate meeting.");
 				}				
 				break;
 			case "endmeeting":
 				inMeeting = false;
+				break;
+			case "status":
+				try {sendToServer(message);
+				} catch (IOException e) {
+					clientUI.display("Status could not be set.");
+				}
+				break;
+			case "available":
+				try {sendToServer(message);
+				} catch (IOException e) {
+					clientUI.display("Could not change status");
+				}				
+				break;
+			case "notavailable":
+				try {sendToServer(message);
+				} catch (IOException e) {
+					clientUI.display("Could not change status");
+				}	
 				break;
 			default: 
 				clientUI.display("Command not recognized.");
@@ -269,7 +285,7 @@ public class ChatClient extends AbstractClient
 	}
 
 	protected void connectionEstablished(){	  
-		connected = true;	  
+		connected = true;
 	}
 
 	/**
