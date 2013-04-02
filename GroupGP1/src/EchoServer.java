@@ -390,7 +390,7 @@ public class EchoServer extends AbstractServer
 				}else {
 					ConnectionToClient blockee_connection = GetClientConnection(blockee);
 					String blockeeMonitor = (String) blockee_connection.getInfo("Monitor");
-					if (blockeeMonitor.equals(client.getInfo("loginId"))) {
+					if (blockeeMonitor != null && blockeeMonitor.equals(client.getInfo("loginId"))) {
 						client.sendToClient("Forwarding of messages form " + blockee + " to you has been terminated.");
 						blockee_connection.sendToClient("#forwardBlocked");
 					}else {
