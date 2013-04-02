@@ -92,6 +92,7 @@ public class ChatClient extends AbstractClient
 			if (cmdEnd < 1) 
 				cmdEnd = message.length();
 			String cmd = message.substring(1, cmdEnd);
+			//clientUI.display(cmd);
 
 			//Switch based on user command
 			switch (cmd.toLowerCase()) {
@@ -107,16 +108,21 @@ public class ChatClient extends AbstractClient
 				break;
 			case "endforward":
 				if (isForwarding) {
-				isForwarding = false;
-				clientUI.display("No longer forwarding messages to " + monitor + ".");
-				monitor = "";
-				break;
+					isForwarding = false;
+					clientUI.display("No longer forwarding messages to " + monitor + ".");
+					monitor = "";
+					break;
 				} else {
 					clientUI.display("Error: You were not forwarding messages.");
 				}
+			case "forwardblocked":
+				isForwarding = false;
+				clientUI.display("Forwarding to " + monitor + " has been canceled because " + monitor + " is blocking messages from you.");
+				monitor = "";
+				break;
+			default:
+				clientUI.display("Command from server not recognized. " + cmd);
 			}
-
-				
 		}
 	}
 
@@ -329,14 +335,14 @@ public class ChatClient extends AbstractClient
 		}
 		System.exit(0);
 	}
-	
+
 	public Boolean isForwarding() {
 		return isForwarding;
 	}
-	
+
 	public String getMonitor() {
 		return monitor;
 	}
-	
+
 }
 //End of ChatClient class
