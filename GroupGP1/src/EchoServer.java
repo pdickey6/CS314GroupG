@@ -725,10 +725,23 @@ public class EchoServer extends AbstractServer
 	private void sendForward(ConnectionToClient client, String message) {
 
 		int startIndex = message.indexOf(' ');
-		int endIndex =  message.indexOf(' ', startIndex +1);
-		String recipient = message.substring(startIndex +1, endIndex);
-		String msg = message.substring(endIndex +1);
-		SendMessageToClient(client, GetClientConnection(recipient), msg);
+		int recipIndex =  message.indexOf(' ', startIndex +1);		
+		String recipient = message.substring(startIndex +1, recipIndex);
+		String msg = message.substring(recipIndex +1);
+		recipIndex++;
+		int sendIndex = message.indexOf('>', recipIndex);
+		String origSender = message.substring(recipIndex, sendIndex);
+		if (isBlocking(recipient, origSender)) {
+			SendMessageToClient(GetClientConnection(origSender), GetClientConnection(recipient), msg);
+		}else {
+			try {
+				msg = msg.substring(msg.indexOf('>') + 2, msg.length());
+				GetClientConnection(recipient).sendToClient((String) client.getInfo("loginId") + "> " + origSender + "> " + msg);
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to client.");
+			}
+		}
+		
 
 	}
 
