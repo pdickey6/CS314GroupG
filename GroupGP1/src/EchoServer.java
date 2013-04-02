@@ -136,6 +136,8 @@ public class EchoServer extends AbstractServer
 				endForward(client);
 			}else if (cmd.equals("forward_message")) {
 				sendForward(client, message);
+			}else if (cmd.equals("endmeeting")) {
+				endForward(client);
 			}
 		}	
 	}

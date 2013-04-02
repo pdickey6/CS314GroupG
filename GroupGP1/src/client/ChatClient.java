@@ -114,12 +114,23 @@ public class ChatClient extends AbstractClient
 					break;
 				} else {
 					clientUI.display("Error: You were not forwarding messages.");
+					break;
 				}
 			case "forwardblocked":
 				isForwarding = false;
 				clientUI.display("Forwarding to " + monitor + " has been canceled because " + monitor + " is blocking messages from you.");
 				monitor = "";
 				break;
+			case "endmeeting":
+				if (isForwarding) {
+					isForwarding = false;
+					clientUI.display("No longer forwarding messages to " + monitor + ".");
+					monitor = "";
+					break;
+				} else {
+					clientUI.display("Error: You were not forwarding messages.");
+					break;
+				}
 			default:
 				clientUI.display("Command from server not recognized. " + cmd);
 			}
