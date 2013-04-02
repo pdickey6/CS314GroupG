@@ -105,11 +105,15 @@ public class ChatClient extends AbstractClient
 				isForwarding = true;
 				clientUI.display("Forwarding: " + monitor + " will now receive your messages. When you return type #stopforward to cancel forwarding.");
 				break;
-			case "endForward":
+			case "endforward":
+				if (isForwarding) {
 				isForwarding = false;
 				clientUI.display("No longer forwarding messages to " + monitor + ".");
 				monitor = "";
 				break;
+				} else {
+					clientUI.display("Error: You were not forwarding messages.");
+				}
 			}
 
 				
@@ -274,6 +278,12 @@ public class ChatClient extends AbstractClient
 					clientUI.display("Could not forward messages.");
 				}	
 				break;
+			case "endforward":
+				try {sendToServer(message);
+				} catch (IOException e) {
+					clientUI.display("Could not stop forwarding messages.");
+				}
+				break;
 			default: 
 				clientUI.display("Command not recognized.");
 			}
@@ -319,5 +329,14 @@ public class ChatClient extends AbstractClient
 		}
 		System.exit(0);
 	}
+	
+	public Boolean isForwarding() {
+		return isForwarding;
+	}
+	
+	public String getMonitor() {
+		return monitor;
+	}
+	
 }
 //End of ChatClient class

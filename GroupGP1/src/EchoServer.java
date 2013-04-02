@@ -380,7 +380,7 @@ public class EchoServer extends AbstractServer
 				serverUI.display("ERROR - Failed to send message to client " + blocker);
 			}
 		} else if (blocker.length() > 0){
-			try {				
+			try {
 				client.sendToClient("Messages from " + blockee + " will be blocked.");
 				if(blockee.equals("server")){
 					serverMuteUsers.add((String) client.getInfo("loginId"));
@@ -388,7 +388,8 @@ public class EchoServer extends AbstractServer
 					clientBlocked.add("server");
 					client.setInfo("Blocked", clientBlocked);
 				}else {
-
+					ConnectionToClient blockee_connection = GetClientConnection(blockee);
+					blockee_connection.
 					blocked.add(blockee);
 					client.setInfo("Blocked", blocked);
 				}
@@ -678,10 +679,8 @@ public class EchoServer extends AbstractServer
 		return false;
 	}
 
-	private void ForwardMessage(ConnectionToClient sender, String message) {
-		int startIndex = message.indexOf(' ');
-		int endIndex =  message.indexOf(' ', startIndex +1);
-		String recipient = message.substring(startIndex +1, endIndex);
+	private void ForwardMessage(ConnectionToClient sender, String message) {	
+		String recipient = message.substring(message.indexOf(' ')+1, message.length());
 		//String msg = message.substring(endIndex +1);
 
 		//Check if recipient is sender
@@ -693,17 +692,17 @@ public class EchoServer extends AbstractServer
 			}
 			return;
 		}
-		if(isBlocking(recipient, (String) sender.getInfo("loginId"))) {
+		if(!UserExists(recipient)){
 			try {
-				sender.sendToClient("Cannot forward to " + recipient + " because " + recipient + " is blocking messages from you.");
+				sender.sendToClient("Cannot forward to " + recipient + " because " + recipient + " does not exist.");
 			} catch (IOException e) {
 				serverUI.display("Message could not be sent to client.");
 			}
 			return;
 		}
-		if(!UserExists(recipient)){
+		if(isBlocking(recipient, (String) sender.getInfo("loginId"))) {
 			try {
-				sender.sendToClient("Cannot forward to " + recipient + " because " + recipient + " does not exist.");
+				sender.sendToClient("Cannot forward to " + recipient + " because " + recipient + " is blocking messages from you.");
 			} catch (IOException e) {
 				serverUI.display("Message could not be sent to client.");
 			}
@@ -731,7 +730,6 @@ public class EchoServer extends AbstractServer
 		try {
 			client.sendToClient("#endforward");
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			serverUI.display("Message could not be sent to the client.");
 		}
 	}
@@ -848,7 +846,7 @@ public class EchoServer extends AbstractServer
 		ConnectionToClient recipClient = GetClientConnection(recip);
 		ConnectionToClient senderClient = GetClientConnection(sender);
 		ArrayList<String> blocked = (ArrayList<String>) recipClient.getInfo("Blocked");
-		if (blocked.contains((String) senderClient.getInfo("loginId"))) {
+		if (blocked.contains(sender)) {
 			return true;
 		}else {
 			return false;
