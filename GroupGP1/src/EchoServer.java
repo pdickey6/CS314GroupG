@@ -132,9 +132,15 @@ public class EchoServer extends AbstractServer
 				GetStatus(client, message);				
 			} else if (cmd.equals("available") || cmd.equals("notavailable")){
 				SetClientStatus(client, cmd);
+			} else if (cmd.equals("endforward")){
+				endForward(client);
+			}else if (cmd.equals("forward_message")) {
+				sendForward(client, message);
 			}
 		}	
 	}
+
+
 
 	/**
 	 * This method handles incoming messages from the server UI
@@ -508,7 +514,7 @@ public class EchoServer extends AbstractServer
 	private boolean Unblock(ConnectionToClient client, String unBlockee) {
 		ArrayList<String> blocks = GetBlocks(client);
 		if (blocks.contains(unBlockee)) {
-			blocks.remove(unBlockee); 
+			blocks.remove(unBlockee);
 			return true;
 		} 
 		return false;
@@ -676,19 +682,58 @@ public class EchoServer extends AbstractServer
 		int startIndex = message.indexOf(' ');
 		int endIndex =  message.indexOf(' ', startIndex +1);
 		String recipient = message.substring(startIndex +1, endIndex);
-		String msg = message.substring(endIndex +1);
+		//String msg = message.substring(endIndex +1);
 
 		//Check if recipient is sender
-		String s = (String) sender.getInfo("loginId");
 		if(sender.getInfo("loginId").equals(recipient)){
 			try {
-				sender.sendToClient("ERROR- You cannot send a message to yourself.");
+				sender.sendToClient("ERROR - You cannot forward your own chat to yourself.");
 			} catch (IOException e) {
 				serverUI.display("Message could not be sent to client.");
 			}
 			return;
 		}
-		SendMessageToClient(sender, GetClientConnection(recipient), msg);
+		if(isBlocking(recipient, (String) sender.getInfo("loginId"))) {
+			try {
+				sender.sendToClient("Cannot forward to " + recipient + " because " + recipient + " is blocking messages from you.");
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to client.");
+			}
+			return;
+		}
+		if(!UserExists(recipient)){
+			try {
+				sender.sendToClient("Cannot forward to " + recipient + " because " + recipient + " does not exist.");
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to client.");
+			}
+			return;
+		}
+		try {
+			sender.sendToClient("#forward " + recipient);
+		} catch (IOException e) {
+			serverUI.display("ERROR - Failed to send message to client");
+		}
+		SendMessageToClient(sender, GetClientConnection(recipient), sender.getInfo("loginId") + " is forwarding their messages to you."); 
+	}
+
+	private void sendForward(ConnectionToClient client, String message) {
+		
+		int startIndex = message.indexOf(' ');
+		int endIndex =  message.indexOf(' ', startIndex +1);
+		String recipient = message.substring(startIndex +1, endIndex);
+		String msg = message.substring(endIndex +1);
+		SendMessageToClient(client, GetClientConnection(recipient), msg);
+
+	}
+
+	private void endForward(ConnectionToClient client) {
+		try {
+			client.sendToClient("#endforward");
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			serverUI.display("Message could not be sent to the client.");
+		}
 	}
 
 	/**
@@ -725,7 +770,16 @@ public class EchoServer extends AbstractServer
 			String recipient = message.substring(startIndex +1, endIndex);
 			String msg = message.substring(endIndex +1);
 			msg = "(Private) " + msg;
-			SendMessageToClient(sender, GetClientConnection(recipient), msg);
+			if (isBlocking (recipient, (String) sender.getInfo("loginID"))) {
+				//if (blocked.contains((String) sender.getInfo("loginId"))) {
+				try {
+					sender.sendToClient("Cannot send message because " + recipient + " is blocking messages from you.");
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
+			}else {
+				SendMessageToClient(sender, GetClientConnection(recipient), msg);
+			}
 		} else {
 			try {
 				sender.sendToClient("You can not send a private message while your status is unavailable");
@@ -787,6 +841,17 @@ public class EchoServer extends AbstractServer
 			if(users.get(i).equals(id)){
 				users.remove(i);
 			}
+		}
+	}
+
+	private boolean isBlocking(String recip, String sender) {
+		ConnectionToClient recipClient = GetClientConnection(recip);
+		ConnectionToClient senderClient = GetClientConnection(sender);
+		ArrayList<String> blocked = (ArrayList<String>) recipClient.getInfo("Blocked");
+		if (blocked.contains((String) senderClient.getInfo("loginId"))) {
+			return true;
+		}else {
+			return false;
 		}
 	}
 
