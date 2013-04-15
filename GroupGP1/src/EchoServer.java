@@ -772,11 +772,7 @@ public class EchoServer extends AbstractServer
 				serverUI.display("Message could not be sent to client.");
 			}
 		}
-<<<<<<< HEAD
-		
-=======
 
->>>>>>> This is the exact version we submitted for GP2
 
 	}
 
