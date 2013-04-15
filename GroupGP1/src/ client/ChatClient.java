@@ -104,7 +104,7 @@ public class ChatClient extends AbstractClient
 			case "forward":
 				monitor = message.substring(cmdEnd+1);
 				isForwarding = true;
-				clientUI.display("Forwarding: " + monitor + " will now receive your messages. When you return type #stopforward to cancel forwarding.");
+				clientUI.display("Forwarding: " + monitor + " will now receive your messages. When you return type #endforward to cancel forwarding.");
 				break;
 			case "endforward":
 				if (isForwarding) {

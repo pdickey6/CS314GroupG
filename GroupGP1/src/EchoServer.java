@@ -307,7 +307,7 @@ public class EchoServer extends AbstractServer
 		//removeUser((String) client.getInfo("loginId"));
 		if(client.getInfo("loginId") != null){
 			serverUI.display(msg);
-			sendToAllClients(msg);		
+			sendToChannel((String) client.getInfo("channel"),msg);		
 		}
 	}
 
@@ -349,11 +349,27 @@ public class EchoServer extends AbstractServer
 		//Initially put all users into public chat
 		client.setInfo("channel", "public");
 
-		//TODO: Need to update this to send messages to only people in same channel, online, not blocked ect...
-		sendToAllClients(id + " has logged on.");
+		sendToChannel("public", id + " has logged on.");
 		serverUI.display(id + " has logged on.");
 
 		return  true;
+	}
+
+	private void sendToChannel(String channel, String msg) {
+		Thread[] clientThreadList = getClientConnections();
+
+		for (int i=0; i<clientThreadList.length; i++)
+		{
+			ConnectionToClient conn= (ConnectionToClient) clientThreadList[i];
+			if (conn.getInfo("channel").equals(channel)) {
+				try {
+					conn.sendToClient(msg);
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
+			}
+		}
+
 	}
 
 	/**
@@ -365,6 +381,12 @@ public class EchoServer extends AbstractServer
 		if(blockee.equals(blocker)){
 			try {
 				client.sendToClient("You cannot block the sending of messages to yourself.");
+			} catch (IOException e) {
+				serverUI.display("ERROR - Failed to send message to client " + blocker);
+			}
+		} else if (!UserExists(blockee)){
+			try {
+				client.sendToClient("User " + blockee + " does not exist");
 			} catch (IOException e) {
 				serverUI.display("ERROR - Failed to send message to client " + blocker);
 			}
@@ -713,13 +735,22 @@ public class EchoServer extends AbstractServer
 			}
 			return;
 		}
+		ConnectionToClient recip = GetClientConnection(recipient);
+		if(recip == null || recip.getInfo("status").equals("unavailable") ){
+			try {
+				sender.sendToClient("Cannot forward to " + recipient + " because " + recipient + " is unavailable.");
+			} catch (IOException e) {
+				serverUI.display("Message could not be sent to client.");
+			}
+			return;
+		}
 		try {
 			sender.sendToClient("#forward " + recipient);
 		} catch (IOException e) {
 			serverUI.display("ERROR - Failed to send message to client");
 		}
 		sender.setInfo("Monitor", recipient);
-		SendMessageToClient(sender, GetClientConnection(recipient), sender.getInfo("loginId") + " is forwarding their messages to you."); 
+		SendMessageToClient(sender, recip, sender.getInfo("loginId") + " is forwarding their messages to you."); 
 	}
 
 	private void sendForward(ConnectionToClient client, String message) {
@@ -741,7 +772,11 @@ public class EchoServer extends AbstractServer
 				serverUI.display("Message could not be sent to client.");
 			}
 		}
+<<<<<<< HEAD
 		
+=======
+
+>>>>>>> This is the exact version we submitted for GP2
 
 	}
 
@@ -786,10 +821,27 @@ public class EchoServer extends AbstractServer
 			int startIndex = message.indexOf(' ');
 			int endIndex =  message.indexOf(' ', startIndex +1);
 			String recipient = message.substring(startIndex +1, endIndex);
+
+			if(recipient.equals(sender.getInfo("loginId"))){
+				try {
+					sender.sendToClient("You acannot send a private message to yourself.");
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
+				return;
+			}
+			if(!UserExists(recipient)){
+				try {
+					sender.sendToClient("You acannot send a private message to a user that does not exist.");
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
+				return;
+			}
+
 			String msg = message.substring(endIndex +1);
 			msg = "(Private) " + msg;
 			if (isBlocking (recipient, (String) sender.getInfo("loginId"))) {
-				//if (blocked.contains((String) sender.getInfo("loginId"))) {
 				try {
 					sender.sendToClient("Cannot send message because " + recipient + " is blocking messages from you.");
 				} catch (IOException e) {
@@ -797,6 +849,11 @@ public class EchoServer extends AbstractServer
 				}
 			}else {
 				SendMessageToClient(sender, GetClientConnection(recipient), msg);
+				try {
+					sender.sendToClient(sender.getInfo("loginId") + "> " + msg);
+				} catch (IOException e) {
+					serverUI.display("Message could not be sent to the client.");
+				}
 			}
 		} else {
 			try {
