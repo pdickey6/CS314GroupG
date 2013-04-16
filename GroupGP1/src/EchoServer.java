@@ -357,20 +357,33 @@ public class EchoServer extends AbstractServer
 				}
 			}
 		} catch (RuntimeException e){} //Catches when there are no clients to getClientConnections
-		
+
 		if(users.contains(id)) {
 			//User already existed
 			int index = users.indexOf(id);
-			try {
-				if (!pw.equals(passwords.get(index))) {
+			if (!pw.equals(passwords.get(index))) {
+				try {
 					client.sendToClient("Error - The password entered was incorrect. Please try again.");
 					serverUI.display("A client, " + id + " tried to log in with the wrong password.");
 					client.close();
 					return false;
+				} catch (IOException e) {
+					serverUI.display("ERROR- Unable to send login error message to client: " + id);
 				}
-			} catch (IOException e) {
-				serverUI.display("ERROR- Unable to send login error message to client: " + id);
+				
+				client.setInfo("loginId", id);
+				client.setInfo("pw", pw);
+				
+				//Initially put all users into public chat
+				client.setInfo("channel", "public");
+
+				sendToChannel("public", id + " has logged on.");
+				serverUI.display(id + " has logged on.");
+
+				return  true;
 			}
+			
+
 		}
 		//first unique login for client
 		client.setInfo("loginId", id);
