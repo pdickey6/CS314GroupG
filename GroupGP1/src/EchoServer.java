@@ -370,6 +370,8 @@ public class EchoServer extends AbstractServer
 				} catch (IOException e) {
 					serverUI.display("ERROR- Unable to send login error message to client: " + id);
 				}
+
+			}else {
 				
 				client.setInfo("loginId", id);
 				client.setInfo("pw", pw);
