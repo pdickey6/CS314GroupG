@@ -29,6 +29,7 @@ public class ChatClient extends AbstractClient
 	 */
 	private ChatIF clientUI;
 	private String loginId;
+	private String password;
 	private String monitor;
 	private Boolean connected;  
 	private Boolean isForwarding;	
@@ -49,21 +50,20 @@ public class ChatClient extends AbstractClient
 		isForwarding = false;
 	}
 
-	public ChatClient(String id, String host, int port, ChatIF UI) 
-			throws IOException 
-			{
+	public ChatClient(String id, String pw, String host, int port, ChatIF UI) throws IOException {
 		super(host, port); //Call the superclass constructor
 		clientUI = UI;
+		password = pw;
 		loginId = id;
 		isForwarding = false;		
 
 		openConnection();
 		try {
-			sendToServer("#login " + loginId);
+			sendToServer("#login " + loginId + " " + password);
 		} catch (IOException e) {
 			clientUI.display("ERROR - No login ID specified. Connection aborted.");
 		}
-			}
+	}
 
 
 	//Instance methods ************************************************

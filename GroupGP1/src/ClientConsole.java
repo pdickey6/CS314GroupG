@@ -42,11 +42,11 @@ public class ClientConsole implements ChatIF
 	 * @param host The host to connect to.
 	 * @param port The port to connect on.
 	 */
-	public ClientConsole(String loginID, String host, int port) 
+	public ClientConsole(String loginID, String password, String host, int port) 
 	{
 		try 
 		{
-			client= new ChatClient(loginID,host, port, this);
+			client= new ChatClient(loginID, password, host, port, this);
 		} 
 		catch(IOException exception) 
 		{
@@ -108,17 +108,23 @@ public class ClientConsole implements ChatIF
 	{
 		//Get loginId
 		String id = "";
+		String pw = "";
 		try {
 			id = args[0];
 		} catch(ArrayIndexOutOfBoundsException e) {
 			System.out.println("ERROR - No login ID specified. Connection aborted.");
 			System.exit(0);
 		}
-
+		try {
+			pw = args[1];
+		} catch(ArrayIndexOutOfBoundsException e) {
+			System.out.println("ERROR - Password not specified. Connection aborted.");
+			System.exit(0);
+		}
 		//Get host
 		String host = "";
 		try {
-			host = args[1];
+			host = args[2];
 		} catch(ArrayIndexOutOfBoundsException e) {
 			host = "localhost";
 		}
@@ -126,12 +132,12 @@ public class ClientConsole implements ChatIF
 		//Get port
 		int port = 0;
 		try {
-			port = Integer.parseInt(args[2]); 
+			port = Integer.parseInt(args[3]); 
 		} catch(Throwable t) {
 			port = DEFAULT_PORT; //Set port to 5555
 		}
 
-		ClientConsole chat= new ClientConsole(id, host, port);
+		ClientConsole chat= new ClientConsole(id, pw, host, port);
 		chat.accept();  //Wait for console data
 	}
 
